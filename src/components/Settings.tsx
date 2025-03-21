@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { MutableRefObject } from "react";
 import {
   Box,
@@ -13,6 +13,7 @@ import {
   Code,
   Flex,
   IconButton,
+  Dialog,
 } from "@chakra-ui/react";
 import { useColorMode } from "../components/ui/color-mode";
 import type { AppConfig } from "../api/etcd";
@@ -27,19 +28,15 @@ const webviewWindow = getCurrentWebviewWindow();
 
 // Define the props interface for the Settings component
 interface SettingsProps {
-  onSettingChange?: (hasChanges: boolean) => void;
-  onRequestSave?: MutableRefObject<(() => Promise<void>) | undefined>;
-  onRequestDiscard?: MutableRefObject<(() => void) | undefined>;
   config: AppConfig | null;
   onConfigUpdate: (config: AppConfig) => Promise<AppConfig>;
+  onBeforeTabChange?: MutableRefObject<((newTab: string) => Promise<boolean>) | undefined>;
 }
 
 function Settings({
-  onSettingChange,
-  onRequestSave,
-  onRequestDiscard,
   config,
-  onConfigUpdate
+  onConfigUpdate,
+  onBeforeTabChange
 }: SettingsProps) {
   const [saving, setSaving] = useState(false);
   const [colorTheme, setColorTheme] = useState<"Light" | "Dark" | "System">("System");
@@ -48,9 +45,19 @@ function Settings({
   // Add state for config file path
   const [configPath, setConfigPath] = useState<string>("");
   const [configPathLoading, setConfigPathLoading] = useState(false);
-
   const [hasCopied, setHasCopied] = useState(false);
   const { setColorMode, colorMode } = useColorMode();
+
+  // Dialog state for unsaved changes
+  const [dialogState, setDialogState] = useState<{
+    isOpen: boolean;
+    pendingTabChange: string | null;
+    resolve: ((value: boolean) => void) | null;
+  }>({
+    isOpen: false,
+    pendingTabChange: null,
+    resolve: null
+  });
 
   // Load config file path
   useEffect(() => {
@@ -73,7 +80,7 @@ function Settings({
     loadConfigPath();
   }, []);
 
-  // Handle opening config file - now it uses the backend implementation
+  // Handle opening config file
   const handleOpenConfigFile = async () => {
     try {
       await openConfigFile();
@@ -116,9 +123,6 @@ function Settings({
         type: "success",
         meta: { closable: true },
       });
-
-      // Notify parent component of successful save
-      onSettingChange?.(false);
     } catch (error) {
       console.error("Failed to save settings:", error);
       toaster.create({
@@ -132,31 +136,57 @@ function Settings({
     }
   };
 
-  // Expose save method to parent component
-  useEffect(() => {
-    if (onRequestSave) {
-      // When parent requests to save changes
-      onRequestSave.current = handleSaveTheme;
-    }
-  }, [onRequestSave]);
-
-  // Expose discard changes method to parent component
-  useEffect(() => {
-    if (onRequestDiscard) {
-      // When parent requests to discard changes
-      onRequestDiscard.current = () => {
-        if (config) {
-          setColorTheme(originalTheme);
-          onSettingChange?.(false);
-        }
-      };
-    }
-  }, [onRequestDiscard, originalTheme, config, onSettingChange]);
-
   // Check if there are unsaved changes
-  const hasUnsavedChanges = () => {
+  const hasUnsavedChanges = useCallback(() => {
     if (!config) return false;
     return colorTheme !== originalTheme;
+  }, [colorTheme, originalTheme, config]);
+
+  // Expose method to check before tab change
+  useEffect(() => {
+    if (onBeforeTabChange) {
+      onBeforeTabChange.current = async (newTab: string) => {
+        // If no unsaved changes, allow tab change
+        if (!hasUnsavedChanges()) {
+          return true;
+        }
+
+        // If there are unsaved changes, show dialog
+        return new Promise<boolean>((resolve) => {
+          setDialogState({
+            isOpen: true,
+            pendingTabChange: newTab,
+            resolve
+          });
+        });
+      };
+    }
+  }, [onBeforeTabChange, hasUnsavedChanges]);
+
+  // Handle dialog actions
+  const handleSaveAndContinue = async () => {
+    await handleSaveTheme();
+    if (dialogState.resolve) {
+      dialogState.resolve(true);
+    }
+    setDialogState({ isOpen: false, pendingTabChange: null, resolve: null });
+  };
+
+  const handleDiscardAndContinue = () => {
+    if (config) {
+      setColorTheme(originalTheme);
+    }
+    if (dialogState.resolve) {
+      dialogState.resolve(true);
+    }
+    setDialogState({ isOpen: false, pendingTabChange: null, resolve: null });
+  };
+
+  const handleCancelTabChange = () => {
+    if (dialogState.resolve) {
+      dialogState.resolve(false);
+    }
+    setDialogState({ isOpen: false, pendingTabChange: null, resolve: null });
   };
 
   // When user changes config, update the color theme to match
@@ -182,6 +212,14 @@ function Settings({
     }
   }, [colorTheme])
 
+  // Initialize theme from config
+  useEffect(() => {
+    if (config && config.color_theme) {
+      setColorTheme(config.color_theme);
+      setOriginalTheme(config.color_theme);
+    }
+  }, [config]);
+
   // Theme options with icons
   const themeOptions = [
     { value: "Light", label: (<HStack><LuSun /> Light</HStack>) },
@@ -190,87 +228,120 @@ function Settings({
   ];
 
   return (
-    <Box p={6} maxW="800px" mx="auto">
-      <VStack gap={6} align="stretch">
-        <Heading size="lg">Settings</Heading>
+    <>
+      <Box p={6} maxW="800px" mx="auto">
+        <VStack gap={6} align="stretch">
+          <Heading size="lg">Settings</Heading>
 
-        {/* Config file info card */}
-        <Card.Root>
-          <Card.Body>
-            <Heading size="sm" mb={2}>Configuration File Location</Heading>
-            <Flex alignItems="center" gap={2}>
-              <Code
-                p={2}
-                borderRadius="md"
-                fontSize="sm"
-                flex="1"
-                overflow="hidden"
-                whiteSpace="nowrap"
-                textOverflow="ellipsis"
-              >
-                {configPathLoading ? "Loading..." : configPath}
-              </Code>
-              <Tooltip
-                open={hasCopied}
-                content="Copied!"
-                openDelay={0}
-                immediate
-                showArrow
-              >
-                <IconButton
-                  aria-label="Copy config path"
-                  size="sm"
-                  onClick={handleCopyConfigPath}
+          {/* Config file info card */}
+          <Card.Root>
+            <Card.Body>
+              <Heading size="sm" mb={2}>Configuration File Location</Heading>
+              <Flex alignItems="center" gap={2}>
+                <Code
+                  p={2}
+                  borderRadius="md"
+                  fontSize="sm"
+                  flex="1"
+                  overflow="hidden"
+                  whiteSpace="nowrap"
+                  textOverflow="ellipsis"
                 >
-                  <LuCopy />
-                </IconButton>
-              </Tooltip>
-              <Tooltip content="Open config file" showArrow>
-                <IconButton
-                  aria-label="Open config file"
-                  size="sm"
-                  onClick={handleOpenConfigFile}
+                  {configPathLoading ? "Loading..." : configPath}
+                </Code>
+                <Tooltip
+                  open={hasCopied}
+                  content="Copied!"
+                  openDelay={0}
+                  immediate
+                  showArrow
                 >
-                  <LuExternalLink />
-                </IconButton>
-              </Tooltip>
-            </Flex>
-          </Card.Body>
-        </Card.Root>
+                  <IconButton
+                    aria-label="Copy config path"
+                    size="sm"
+                    onClick={handleCopyConfigPath}
+                  >
+                    <LuCopy />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip content="Open config file" showArrow>
+                  <IconButton
+                    aria-label="Open config file"
+                    size="sm"
+                    onClick={handleOpenConfigFile}
+                  >
+                    <LuExternalLink />
+                  </IconButton>
+                </Tooltip>
+              </Flex>
+            </Card.Body>
+          </Card.Root>
 
-        <Card.Root>
-          <Card.Body gap={4}>
-            <Heading size="md">Appearance</Heading>
-            <Separator />
+          <Card.Root>
+            <Card.Body gap={4}>
+              <Heading size="md">Appearance</Heading>
+              <Separator />
 
-            <Box>
-              <Text fontWeight="medium" mb={2}>
-                Color Theme
+              <Box>
+                <Text fontWeight="medium" mb={2}>
+                  Color Theme
+                </Text>
+
+                <SegmentGroup.Root
+                  value={colorTheme}
+                  onValueChange={(e) => {
+                    setColorTheme(e.value as "Light" | "Dark" | "System");
+                  }}
+                >
+                  <SegmentGroup.Indicator />
+                  <SegmentGroup.Items items={themeOptions} />
+                </SegmentGroup.Root>
+              </Box>
+            </Card.Body>
+
+            <Card.Footer justifyContent="flex-end">
+              <Button
+                colorScheme="blue"
+                onClick={handleSaveTheme}
+                disabled={!hasUnsavedChanges()}
+                loading={saving}
+              >
+                Save Changes
+              </Button>
+            </Card.Footer>
+          </Card.Root>
+        </VStack>
+      </Box>
+
+      {/* Unsaved Changes Warning Dialog */}
+      <Dialog.Root modal={true} open={dialogState.isOpen}>
+        <Dialog.Backdrop />
+        <Dialog.Positioner>
+          <Dialog.Content maxWidth="450px">
+            <Dialog.Header>
+              <Dialog.Title>Unsaved Changes</Dialog.Title>
+            </Dialog.Header>
+            <Dialog.CloseTrigger position="absolute" right="4" top="4" onClick={handleCancelTabChange} />
+            <Dialog.Body>
+              <Text>
+                You have unsaved changes in Settings. Would you like to save your changes before leaving?
               </Text>
-
-              <SegmentGroup.Root
-                value={colorTheme}
-                onValueChange={(e) => setColorTheme(e.value as "Light" | "Dark" | "System")}
-              >
-                <SegmentGroup.Indicator />
-                <SegmentGroup.Items items={themeOptions} />
-              </SegmentGroup.Root>
-            </Box>
-          </Card.Body>
-
-          <Card.Footer justifyContent="flex-end">
-            <Button
-              colorScheme="blue"
-              onClick={handleSaveTheme}
-              disabled={!hasUnsavedChanges()}
-              loading={saving}
-            >
-              Save Changes
-            </Button>
-          </Card.Footer>
-        </Card.Root>
-      </VStack>
-    </Box>
+            </Dialog.Body>
+            <Dialog.Footer gap={2}>
+              <Button variant="outline" onClick={handleCancelTabChange}>
+                Cancel
+              </Button>
+              <Button variant="outline" colorPalette="red" onClick={handleDiscardAndContinue}>
+                Discard Changes
+              </Button>
+              <Button colorScheme="blue" onClick={handleSaveAndContinue}>
+                Save Changes
+              </Button>
+            </Dialog.Footer>
+          </Dialog.Content>
+        </Dialog.Positioner>
+      </Dialog.Root>
+    </>
   );
 }
 

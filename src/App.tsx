@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
-import { Box, Flex, Dialog, Button, Text } from "@chakra-ui/react";
+import { Box, Flex } from "@chakra-ui/react";
 import { Tabs } from "@chakra-ui/react";
 import Profiles from "./components/Profiles";
-import Settings from "./components/Settings"; // Import the Settings component
+import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
 import { LuLayoutDashboard, LuUsers, LuSettings } from "react-icons/lu";
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
@@ -26,11 +26,9 @@ function App() {
   const [initializing, setInitializing] = useState(true);
   const [shouldRefreshDashboard, setShouldRefreshDashboard] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [isLeaveWarningOpen, setIsLeaveWarningOpen] = useState(false);
-  const [pendingTabChange, setPendingTabChange] = useState<string | null>(null);
-  const [hasSettingsChanges, setHasSettingsChanges] = useState(false);
-  const saveSettingsRef = useRef<() => Promise<void>>();
-  const discardSettingsRef = useRef<() => void>();
+
+  // Keep only the tab change check ref
+  const checkBeforeTabChangeRef = useRef<(newTab: string) => Promise<boolean>>();
 
   // Add centralized config state
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
@@ -155,52 +153,20 @@ function App() {
     initialize();
   }, []);
 
-  const handleTabChange = (e: { value: string }) => {
-    // If coming from settings tab, check for unsaved changes
-    if (activeTab === "settings" && e.value !== "settings" && hasSettingsChanges) {
-      // Prevent immediate tab change, store the pending tab
-      setPendingTabChange(e.value);
-      setIsLeaveWarningOpen(true);
-      return;
+  const handleTabChange = async (e: { value: string }) => {
+    const newTab = e.value;
+
+    // If we're leaving settings tab, check with Settings component first
+    if (activeTab === "settings" && newTab !== "settings" && checkBeforeTabChangeRef.current) {
+      const canProceed = await checkBeforeTabChangeRef.current(newTab);
+      if (!canProceed) {
+        // User cancelled the tab change
+        return;
+      }
     }
 
-    // If no issues, change tab normally
-    setActiveTab(e.value);
-  };
-
-  // Handle user's choice to leave with unsaved changes
-  const handleLeaveConfirm = () => {
-    // Reset the settings to original values
-    if (discardSettingsRef.current) {
-      discardSettingsRef.current();
-    }
-
-    setIsLeaveWarningOpen(false);
-    // Apply the pending tab change
-    if (pendingTabChange) {
-      setActiveTab(pendingTabChange);
-      setPendingTabChange(null);
-    }
-  };
-
-  // Handle user's choice to stay and save
-  const handleSaveAndLeave = async () => {
-    if (saveSettingsRef.current) {
-      await saveSettingsRef.current();
-    }
-
-    setIsLeaveWarningOpen(false);
-    // Apply the pending tab change
-    if (pendingTabChange) {
-      setActiveTab(pendingTabChange);
-      setPendingTabChange(null);
-    }
-  };
-
-  // Handle user's choice to cancel leaving
-  const handleLeaveCancel = () => {
-    setIsLeaveWarningOpen(false);
-    setPendingTabChange(null);
+    // If no issues or user confirmed, change tab normally
+    setActiveTab(newTab);
   };
 
   // Handle onboarding completion
@@ -322,9 +288,7 @@ function App() {
             </Tabs.Content>
             <Tabs.Content value="settings" p={0} h="100%">
               <Settings
-                onSettingChange={setHasSettingsChanges}
-                onRequestSave={saveSettingsRef}
-                onRequestDiscard={discardSettingsRef}
+                onBeforeTabChange={checkBeforeTabChangeRef}
                 config={appConfig}
                 onConfigUpdate={saveConfig}
               />
@@ -332,35 +296,6 @@ function App() {
           </Box>
         </Tabs.Root>
       </Flex>
-
-      {/* Unsaved Changes Warning Dialog */}
-      <Dialog.Root modal={true} open={isLeaveWarningOpen}>
-        <Dialog.Backdrop />
-        <Dialog.Positioner>
-          <Dialog.Content maxWidth="450px">
-            <Dialog.Header>
-              <Dialog.Title>Unsaved Changes</Dialog.Title>
-            </Dialog.Header>
-            <Dialog.CloseTrigger position="absolute" right="4" top="4" onClick={handleLeaveCancel} />
-            <Dialog.Body>
-              <Text>
-                You have unsaved changes in Settings. Would you like to save your changes before leaving?
-              </Text>
-            </Dialog.Body>
-            <Dialog.Footer gap={2}>
-              <Button variant="outline" onClick={handleLeaveCancel}>
-                Cancel
-              </Button>
-              <Button variant="outline" colorPalette="red" onClick={handleLeaveConfirm}>
-                Discard Changes
-              </Button>
-              <Button colorScheme="blue" onClick={handleSaveAndLeave}>
-                Save Changes
-              </Button>
-            </Dialog.Footer>
-          </Dialog.Content>
-        </Dialog.Positioner>
-      </Dialog.Root>
 
       <Toaster />
     </>
