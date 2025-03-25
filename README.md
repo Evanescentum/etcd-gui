@@ -2,6 +2,8 @@
 
 A modern, cross-platform desktop application for managing etcd key-value databases. Built with Tauri, React, and Chakra UI.
 
+> **Note:** This project is currently in development and considered in preview status. Features may change and issues may exist.
+
 ![ETCD GUI Screenshot](./screenshots/dashboard.png)
 
 ## Features
