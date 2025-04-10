@@ -10,7 +10,6 @@ import type { AppConfig } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
 import { useColorModeValue, useColorMode } from "./components/ui/color-mode";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { UnlistenFn } from "@tauri-apps/api/event";
 import { lazy } from "react";
 
 
@@ -40,7 +39,6 @@ function App() {
       setConfigLoading(true);
       const config = await getConfig();
       setAppConfig(config);
-      return config;
     } catch (error) {
       console.error("Failed to load config:", error);
       toaster.create({
@@ -55,27 +53,14 @@ function App() {
     }
   };
 
-  // If the theme config item is not set to a specific value, listen for system theme changes
   useEffect(() => {
-    // Change the color mode now if needed
-    if (!appConfig || appConfig.color_theme === "System") {
-      currentWindow.theme().then((theme) => {
-        if (theme) {
-          setColorMode(theme);
-        }
-      });
-    }
-
-    let unlisten: UnlistenFn;
+    if (!appConfig || appConfig.color_theme !== "System") return;
     currentWindow.onThemeChanged(({ payload: theme }) => {
-      if (!appConfig || appConfig.color_theme !== "System") return;
-      setColorMode(theme);
-    }).then((l) => { unlisten = l; });
-
-    return () => {
-      unlisten?.();
-    };
-  }, []);
+      if (theme) {
+        setColorMode(theme);
+      }
+    });
+  }, [appConfig]);
 
   // Update config function that can be used by components
   const saveConfig = async (newConfig: AppConfig) => {
