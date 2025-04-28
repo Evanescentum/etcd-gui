@@ -250,35 +250,33 @@ function App() {
           </Tabs.List>
 
           {/* Content area */}
-          <Box flex="1" overflow="hidden" minWidth={0}>
-            <Tabs.Content value="dashboard" p={0} h="100%">
-              <Dashboard
-                appInitializing={initializing}
-                appConfig={appConfig}
-                shouldRefresh={shouldRefreshDashboard}
-                onRefreshComplete={() => setShouldRefreshDashboard(false)}
-              />
-            </Tabs.Content>
-            <Tabs.Content value="profiles" p={0} h="100%">
-              <Profiles
-                onCurrentProfileChanged={() => {
-                  setShouldRefreshDashboard(true);
-                  // Reload config after profile changes
-                  loadConfig();
-                }}
-                config={appConfig}
-                configLoading={configLoading}
-                onConfigUpdate={saveConfig}
-              />
-            </Tabs.Content>
-            <Tabs.Content value="settings" p={0} h="100%">
-              <Settings
-                onBeforeTabChange={checkBeforeTabChangeRef}
-                config={appConfig}
-                onConfigUpdate={saveConfig}
-              />
-            </Tabs.Content>
-          </Box>
+          <Tabs.Content value="dashboard" flex="1" w="100%" h="100%">
+            <Dashboard
+              appInitializing={initializing}
+              appConfig={appConfig}
+              shouldRefresh={shouldRefreshDashboard}
+              onRefreshComplete={() => setShouldRefreshDashboard(false)}
+            />
+          </Tabs.Content>
+          <Tabs.Content value="profiles" h="100%">
+            <Profiles
+              onCurrentProfileChanged={() => {
+                setShouldRefreshDashboard(true);
+                // Reload config after profile changes
+                loadConfig();
+              }}
+              config={appConfig}
+              configLoading={configLoading}
+              onConfigUpdate={saveConfig}
+            />
+          </Tabs.Content>
+          <Tabs.Content value="settings" h="100%">
+            <Settings
+              onBeforeTabChange={checkBeforeTabChangeRef}
+              config={appConfig}
+              onConfigUpdate={saveConfig}
+            />
+          </Tabs.Content>
         </Tabs.Root>
       </Flex>
 

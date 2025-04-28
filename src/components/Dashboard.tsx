@@ -3,7 +3,6 @@ import {
   Box,
   ButtonGroup,
   CloseButton,
-  Container,
   Flex,
   Heading,
   HStack,
@@ -18,7 +17,10 @@ import {
   Table,
   Button,
   Skeleton,
-  Status
+  Status,
+  Select,
+  Portal,
+  createListCollection
 } from "@chakra-ui/react";
 import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { TbEdit } from "react-icons/tb";
@@ -30,6 +32,34 @@ import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
 import { useDelayedLoading } from "@/hooks/useDelayedLoading";
+
+// 表格单元格中的 Tooltip 组件
+const TableRowTooltip = ({
+  content,
+  maxWidth,
+  children
+}: {
+  content: string,
+  maxWidth: string,
+  children: React.ReactNode
+}) => {
+  return (
+    <Tooltip
+      content={<Text fontFamily="mono">{content}</Text>}
+      openDelay={200}
+      interactive
+      contentProps={{
+        width: "100%",
+        maxWidth,
+        bg: "bg.panel",
+        color: "fg",
+        borderColor: "gray.200"
+      }}
+    >
+      {children}
+    </Tooltip>
+  );
+};
 
 interface DashboardProps {
   appInitializing: boolean;
@@ -52,7 +82,16 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 5;
+  const [pageSize, setPageSize] = useState(5);
+  const pageSizeCollection = createListCollection({
+    items: [
+      { label: "5/页", value: "5" },
+      { label: "10/页", value: "10" },
+      { label: "20/页", value: "20" },
+      { label: "50/页", value: "50" },
+      { label: "100/页", value: "100" },
+    ]
+  });
 
   // Dialog state
   const [dialogState, setDialogState] = useState<{
@@ -136,8 +175,8 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   ) : undefined;
 
   return (
-    <Container maxW="container.xl" p={0}>
-      <Flex direction="column" h="100vh">
+    <Flex direction="column" height="100vh">
+      <Flex marginTop={0} direction="column" overflowY="auto">
         {/* Header */}
         <Flex
           as="header"
@@ -160,220 +199,241 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
         </Flex>
 
         {/* Main content */}
-        <Flex flex="1" direction="column" overflow="hidden">
-          {/* Toolbar */}
-          <Box p={4} borderBottomWidth="1px">
-            <VStack gap={4}>
-              {/* Path navigation */}
-              <Flex width="full" align="center" gap={2}>
+        {/* Toolbar */}
+        <Box p={4} borderBottomWidth="1px">
+          <VStack gap={4}>
+            {/* Path navigation */}
+            <Flex width="full" align="center" gap={2}>
+              <Box borderWidth="1px" borderRadius="md" p={2}>
+                <LuFolder />
+              </Box>
+              <Input
+                fontFamily="mono"
+                value={keyPrefix}
+                onChange={(e) => {
+                  setKeyPrefix(e.target.value);
+                  // Use debounced version of loadEtcdData that only executes 300ms after last call
+                  debounce(loadEtcdData, 300)();
+                }}
+                placeholder="Key prefix"
+                flex="1"
+              />
+            </Flex>
+
+            {/* Search and actions */}
+            <Flex width="full" gap={2}>
+              <Flex flex="1" align="center" gap={2}>
                 <Box borderWidth="1px" borderRadius="md" p={2}>
-                  <LuFolder />
+                  <LuSearch />
                 </Box>
-                <Input
-                  fontFamily="mono"
-                  value={keyPrefix}
-                  onChange={(e) => {
-                    setKeyPrefix(e.target.value);
-                    // Use debounced version of loadEtcdData that only executes 300ms after last call
-                    debounce(loadEtcdData, 300)();
-                  }}
-                  placeholder="Key prefix"
-                  flex="1"
-                />
+                <InputGroup endElement={searchEndElement} flex="1">
+                  <Input
+                    fontFamily="mono"
+                    placeholder="Search keys..."
+                    value={searchQuery}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      setCurrentPage(1); // Reset to first page when search changes
+                    }}
+                    flex="1"
+                  />
+                </InputGroup>
               </Flex>
 
-              {/* Search and actions */}
-              <Flex width="full" gap={2}>
-                <Flex flex="1" align="center" gap={2}>
-                  <Box borderWidth="1px" borderRadius="md" p={2}>
-                    <LuSearch />
-                  </Box>
-                  <InputGroup endElement={searchEndElement} flex="1">
-                    <Input
-                      fontFamily="mono"
-                      placeholder="Search keys..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setCurrentPage(1); // Reset to first page when search changes
-                      }}
-                      flex="1"
-                    />
-                  </InputGroup>
-                </Flex>
+              <Tooltip content="Add new key" showArrow>
+                <Button
+                  onClick={() => setDialogState({ action: "add", key: "", value: "" })}
+                  colorScheme="blue"
+                >
+                  <Box mr={2}><LuPlus /></Box>
+                  Add
+                </Button>
+              </Tooltip>
+            </Flex>
+          </VStack>
+        </Box>
 
-                <Tooltip content="Add new key" showArrow>
-                  <Button
-                    onClick={() => setDialogState({ action: "add", key: "", value: "" })}
-                    colorScheme="blue"
-                  >
-                    <Box mr={2}><LuPlus /></Box>
-                    Add
-                  </Button>
-                </Tooltip>
-              </Flex>
-            </VStack>
-          </Box>
-
-          {/* Key-value table */}
-
-          <Table.Root width="full" flex={1}>
-            <Table.ColumnGroup>
-              <Table.Column htmlWidth="35%" />
-              <Table.Column htmlWidth="55%" />
-              <Table.Column />
-            </Table.ColumnGroup>
-            <Table.Header position="sticky" top={0}>
-              <Table.Row>
-                <Table.ColumnHeader>Key</Table.ColumnHeader>
-                <Table.ColumnHeader>Value</Table.ColumnHeader>
-                <Table.ColumnHeader width="120px">Actions</Table.ColumnHeader>
-              </Table.Row>
-            </Table.Header>
-            <Table.Body>
-              {delayedLoading ? ( // Use delayedLoading instead of loading for skeletons
-                // Loading skeletons
-                Array.from({ length: 5 }).map((_, index) => (
-                  <Table.Row key={`skeleton-${index}`}>
-                    <Table.Cell>
-                      <Skeleton height="20px" width="80%" />
-                    </Table.Cell>
-                    <Table.Cell>
-                      <Skeleton height="20px" width="90%" />
-                    </Table.Cell>
-                    <Table.Cell>
-                      <HStack gap={2}>
-                        <Skeleton height="32px" width="32px" borderRadius="md" />
-                        <Skeleton height="32px" width="32px" borderRadius="md" />
-                      </HStack>
-                    </Table.Cell>
-                  </Table.Row>
-                ))
-              ) : paginatedData.length > 0 ? (
-                // Actual data rows
-                paginatedData.map((item) => (
-                  <Table.Row key={item.key}>
-                    <Table.Cell maxWidth={200}>
-                      <Tooltip content={<Text fontFamily="mono">{item.key}</Text>} openDelay={200} interactive>
-                        <Text fontFamily="mono" lineClamp={1}>
-                          {item.key}
-                        </Text>
-                      </Tooltip>
-                    </Table.Cell>
-                    <Table.Cell maxWidth={200}>
-                      <Tooltip content={<Text fontFamily="mono">{item.value}</Text>} openDelay={200} interactive>
-                        <Text fontFamily="mono" lineClamp={1}>
-                          {item.value}
-                        </Text>
-                      </Tooltip>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <HStack gap={2}>
-                        <Tooltip content="Edit key" showArrow>
-                          <IconButton
-                            aria-label="Edit"
-                            children={<TbEdit />}
-                            size="sm"
-                            onClick={() => handleKeyEdit(item.key, item.value)}
-                          />
-                        </Tooltip>
-                        <Tooltip content="Delete key" showArrow>
-                          <IconButton
-                            aria-label="Delete"
-                            children={<LuTrash2 />}
-                            size="sm"
-                            colorScheme="red"
-                            variant="ghost"
-                            onClick={() => handleKeyDelete(item.key, item.value)}
-                          />
-                        </Tooltip>
-                      </HStack>
-                    </Table.Cell>
-                  </Table.Row>
-                ))
-              ) : (
-                // Empty state
-                <Table.Row>
-                  <Table.Cell colSpan={3} textAlign="center" py={8}>
-                    {loadError ? (
-                      <Text color="red.500">Error loading data: {loadError}</Text>
-                    ) : (
-                      <Text>No items found</Text>
-                    )}
+        {/* Key-value table */}
+        <Table.Root>
+          <Table.ColumnGroup>
+            <Table.Column htmlWidth="35%" />
+            <Table.Column htmlWidth="55%" />
+            <Table.Column />
+          </Table.ColumnGroup>
+          <Table.Header>
+            <Table.Row>
+              <Table.ColumnHeader>Key</Table.ColumnHeader>
+              <Table.ColumnHeader>Value</Table.ColumnHeader>
+              <Table.ColumnHeader>Actions</Table.ColumnHeader>
+            </Table.Row>
+          </Table.Header>
+          <Table.Body>
+            {delayedLoading ? (
+              // Loading skeletons
+              Array.from({ length: 5 }).map((_, index) => (
+                <Table.Row key={`skeleton-${index}`}>
+                  <Table.Cell>
+                    <Skeleton height="20px" width="80%" />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <Skeleton height="20px" width="90%" />
+                  </Table.Cell>
+                  <Table.Cell>
+                    <HStack gap={2}>
+                      <Skeleton height="32px" width="32px" borderRadius="md" />
+                      <Skeleton height="32px" width="32px" borderRadius="md" />
+                    </HStack>
                   </Table.Cell>
                 </Table.Row>
-              )}
-            </Table.Body>
-          </Table.Root>
-
-          {/* Pagination controls */}
-          <Flex p={4} justifyContent="center" alignItems="center" borderTopWidth="1px">
-            <Skeleton loading={delayedLoading} borderRadius="md"> {/* Use delayedLoading instead of loading */}
-              <Pagination.Root
-                count={filteredData.length}
-                pageSize={pageSize}
-                page={currentPage}
-                onPageChange={(details) => { setCurrentPage(details.page); }}
-              >
-                <ButtonGroup variant="ghost" size="sm" wrap="wrap">
-                  <Pagination.PrevTrigger asChild>
-                    <IconButton aria-label="Previous page">
-                      <LuChevronLeft />
-                    </IconButton>
-                  </Pagination.PrevTrigger>
-
-                  <Pagination.Items
-                    render={(page) => (
-                      <IconButton
-                        aria-label={`Page ${page.value}`}
-                        variant={{ base: "ghost", _selected: "outline" }}
-                      >
-                        {page.value}
-                      </IconButton>
-                    )}
-                  />
-
-                  <Pagination.NextTrigger asChild>
-                    <IconButton aria-label="Next page">
-                      <LuChevronRight />
-                    </IconButton>
-                  </Pagination.NextTrigger>
-                </ButtonGroup>
-              </Pagination.Root>
-            </Skeleton>
-          </Flex>
-
-          {/* Status bar */}
-          <HStack
-            p={2}
-            borderTopWidth="thin"
-            gap={4}
-          >
-            <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
-              <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
-            </Skeleton>
-            <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
-              <Badge>{filteredData.length} keys found</Badge>
-            </Skeleton>
-            {searchQuery && (
-              <Badge colorScheme="blue">Search: "{searchQuery}"</Badge>
+              ))
+            ) : paginatedData.length > 0 ? (
+              // Actual data rows
+              paginatedData.map((item) => (
+                <Table.Row key={item.key}>
+                  <Table.Cell maxWidth={200}>
+                    <TableRowTooltip content={item.key} maxWidth="35vw">
+                      <Text fontFamily="mono" lineClamp={1}>{item.key}</Text>
+                    </TableRowTooltip>
+                  </Table.Cell>
+                  <Table.Cell maxWidth={200}>
+                    <TableRowTooltip content={item.value} maxWidth="55vw">
+                      <Text fontFamily="mono" lineClamp={1}>{item.value}</Text>
+                    </TableRowTooltip>
+                  </Table.Cell>
+                  <Table.Cell>
+                    <HStack gap={2}>
+                      <Tooltip content="Edit key" showArrow>
+                        <IconButton
+                          aria-label="Edit"
+                          children={<TbEdit />}
+                          size="sm"
+                          onClick={() => handleKeyEdit(item.key, item.value)}
+                        />
+                      </Tooltip>
+                      <Tooltip content="Delete key" showArrow>
+                        <IconButton
+                          aria-label="Delete"
+                          children={<LuTrash2 />}
+                          size="sm"
+                          colorScheme="red"
+                          variant="ghost"
+                          onClick={() => handleKeyDelete(item.key, item.value)}
+                        />
+                      </Tooltip>
+                    </HStack>
+                  </Table.Cell>
+                </Table.Row>
+              ))
+            ) : (
+              // Empty state
+              <Table.Row>
+                <Table.Cell colSpan={3} textAlign="center" py={8}>
+                  {loadError ? (
+                    <Text color="red.500">Error loading data: {loadError}</Text>
+                  ) : (
+                    <Text>No items found</Text>
+                  )}
+                </Table.Cell>
+              </Table.Row>
             )}
-            <Spacer />
-            {loadError ?
-              <Status.Root colorPalette="red">
-                <Status.Indicator /> Connection Error
-              </Status.Root>
-              : delayedLoading ?
-                <Status.Root colorPalette="yellow">
-                  <Status.Indicator /> Loading...
-                </Status.Root> :
-                <Status.Root colorPalette="green">
-                  <Status.Indicator /> Ready
-                </Status.Root>
-            }
-          </HStack>
-        </Flex>
+          </Table.Body>
+        </Table.Root>
       </Flex>
+
+      {/* Pagination controls */}
+      <Flex marginTop="auto" paddingTop={2} justifyContent="center" borderTopWidth="thin">
+        <Select.Root
+          collection={pageSizeCollection}
+          onValueChange={val => {
+            setPageSize(Number(val.value));
+            setCurrentPage(1);
+          }}
+          defaultValue={[String(pageSize)]}
+          size="sm"
+          width="8vw"
+        >
+          <Select.HiddenSelect />
+          <Select.Control>
+            <Select.Trigger>
+              <Select.ValueText placeholder="分页大小" />
+            </Select.Trigger>
+            <Select.IndicatorGroup>
+              <Select.Indicator />
+            </Select.IndicatorGroup>
+          </Select.Control>
+          <Portal>
+            <Select.Positioner>
+              <Select.Content>
+                {pageSizeCollection.items.map((option) => (
+                  <Select.Item item={option} key={option.value}>
+                    {option.label}
+                    <Select.ItemIndicator />
+                  </Select.Item>
+                ))}
+              </Select.Content>
+            </Select.Positioner>
+          </Portal>
+        </Select.Root>
+        <Skeleton loading={delayedLoading} borderRadius="md">
+          <Pagination.Root
+            count={filteredData.length}
+            pageSize={pageSize}
+            page={currentPage}
+            onPageChange={(details) => { setCurrentPage(details.page); }}
+          >
+            <ButtonGroup variant="ghost" size="sm" wrap="wrap">
+              <Pagination.PrevTrigger asChild>
+                <IconButton aria-label="Previous page">
+                  <LuChevronLeft />
+                </IconButton>
+              </Pagination.PrevTrigger>
+
+              <Pagination.Items
+                render={(page) => (
+                  <IconButton
+                    aria-label={`Page ${page.value}`}
+                    variant={{ base: "ghost", _selected: "outline" }}
+                  >
+                    {page.value}
+                  </IconButton>
+                )}
+              />
+
+              <Pagination.NextTrigger asChild>
+                <IconButton aria-label="Next page">
+                  <LuChevronRight />
+                </IconButton>
+              </Pagination.NextTrigger>
+            </ButtonGroup>
+          </Pagination.Root>
+        </Skeleton>
+      </Flex>
+
+      {/* Status bar */}
+      <HStack margin={2}>
+        <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
+          <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
+        </Skeleton>
+        <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
+          <Badge>{filteredData.length} keys found</Badge>
+        </Skeleton>
+        {searchQuery && (
+          <Badge colorScheme="blue">Search: "{searchQuery}"</Badge>
+        )}
+        <Spacer />
+        {loadError ?
+          <Status.Root colorPalette="red">
+            <Status.Indicator /> Connection Error
+          </Status.Root>
+          : delayedLoading ?
+            <Status.Root colorPalette="yellow">
+              <Status.Indicator /> Loading...
+            </Status.Root> :
+            <Status.Root colorPalette="green">
+              <Status.Indicator /> Ready
+            </Status.Root>
+        }
+      </HStack>
 
       {/* Add Key Dialog */}
       {dialogState && dialogState.action === "add" && (
@@ -410,7 +470,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
         />
       )}
 
-    </Container>
+    </Flex>
   );
 }
 
