@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import {
   Box,
   Button,
@@ -9,17 +9,15 @@ import {
   Text,
   VStack,
   Dialog,
-  Icon,
 } from "@chakra-ui/react";
-import { useColorModeValue } from "../components/ui/color-mode";
 import { LuPlus, LuTrash2, LuServer, LuArrowRight, LuCheck, LuLock } from "react-icons/lu";
 import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
 import { toaster } from "../components/ui/toaster";
 import { initializeEtcdClient } from "../api/etcd";
 import type { AppConfig, Profile } from "../api/etcd";
-import { useDelayedLoading } from "@/hooks/useDelayedLoading";
 import ProfileEditDialog from "./dialogs/ProfileEditDialog";
+import { useDebounce } from "@uidotdev/usehooks";
 
 interface ProfilesProps {
   onCurrentProfileChanged?: () => void;
@@ -35,46 +33,37 @@ function Profiles({
   onConfigUpdate,
 }: ProfilesProps) {
   let [loading, setLoading] = useState(configLoading);
-  loading = useDelayedLoading(loading, 200);
+  loading = useDebounce(loading, 200);
   const [selectedProfile, setSelectedProfile] = useState<{
     profile: Profile,
     usedFor: "create" | "edit" | "delete"
   } | null>(null);
 
-  const bgColor = useColorModeValue("white", "gray.800");
-  const borderColor = useColorModeValue("gray.200", "gray.700");
-  const highlightColor = useColorModeValue("blue.50", "blue.900");
+  const isCurrentProfile = useCallback((profileName: string) => {
+    return config?.current_profile === profileName;
+  }, [config]);
 
   const handleActivateProfile = async (profileName: string) => {
     if (!config) return;
 
-    try {
-      setLoading(true);
+    setLoading(true);
 
-      // Update config with new active profile
-      const updatedConfig = {
-        ...config,
-        current_profile: profileName
-      };
+    // Update config with new active profile
+    const updatedConfig = {
+      ...config,
+      current_profile: profileName
+    };
 
-      await onConfigUpdate(updatedConfig);
+    await onConfigUpdate(updatedConfig);
 
-      // Reconnect to etcd with the new profile
-      await initializeEtcdClient();
+    // Reconnect to etcd with the new profile
+    initializeEtcdClient();
 
-      // Notify parent component about profile change
-      onCurrentProfileChanged?.();
-    } catch (error) {
-      console.error("Failed to activate profile:", error);
-      toaster.create({
-        title: "Error",
-        description: "Failed to activate profile",
-        type: "error",
-        meta: { closable: true },
-      });
-    } finally {
-      setLoading(false);
-    }
+    // Notify parent component about profile change
+    onCurrentProfileChanged?.();
+
+    setLoading(false);
+
   };
 
   const handleCreateProfile = () => {
@@ -220,18 +209,7 @@ function Profiles({
 
         {/* Profile list */}
         <Box mt={4}>
-          {config?.profiles.length === 0 ? (
-            <Box p={6} textAlign="center" borderWidth="1px" borderRadius="md" borderColor={borderColor}>
-              <Text mb={4}>No profiles available. Create your first profile to get started.</Text>
-              <Button
-                colorPalette="blue"
-                onClick={handleCreateProfile}
-                loading={loading}
-              ><LuPlus />
-                Add Profile
-              </Button>
-            </Box>
-          ) : (
+          {
             <VStack gap={3} align="stretch">
               {config?.profiles.map((profile) => (
                 <Box
@@ -239,12 +217,12 @@ function Profiles({
                   p={4}
                   borderWidth="1px"
                   borderRadius="md"
-                  borderColor={config.current_profile === profile.name ? "blue.400" : borderColor}
-                  bg={config.current_profile === profile.name ? highlightColor : bgColor}
+                  borderColor={isCurrentProfile(profile.name) ? "blue.fg" : "gray.muted"}
+                  bg={isCurrentProfile(profile.name) ? "bg.emphasized" : "bg.info"}
                   position="relative"
                 >
                   <Flex align="center">
-                    <Box p={2} borderRadius="md" bg={config.current_profile === profile.name ? "blue.300" : "gray.300"}>
+                    <Box p={2} borderRadius="md" bg={isCurrentProfile(profile.name) ? "blue.300" : "gray.300"}>
                       <LuServer />
                     </Box>
 
@@ -252,9 +230,7 @@ function Profiles({
                       <Flex align="center" gap={2}>
                         <Text fontWeight="bold">{profile.name}</Text>
                         {profile.locked && (
-                          <Tooltip content="Read-only mode" openDelay={100} closeDelay={200}>
-                            <Icon><LuLock /></Icon>
-                          </Tooltip>
+                          <Tooltip content="Read-only mode" openDelay={100} closeDelay={200}><LuLock /></Tooltip>
                         )}
                       </Flex>
                       <Text fontSize="sm" color="gray.600">
@@ -263,7 +239,17 @@ function Profiles({
                     </VStack>
 
                     <HStack gap={2}>
-                      {config.current_profile !== profile.name && (
+                      {isCurrentProfile(profile.name) ? (
+                        <Button
+                          size="sm"
+                          colorPalette="blue"
+                          variant="ghost"
+                          disabled
+                        >
+                          <Box mr={2}><LuCheck /></Box>
+                          Active
+                        </Button>
+                      ) : (
                         <Button
                           variant="outline"
                           size="sm"
@@ -272,18 +258,6 @@ function Profiles({
                         >
                           <Box mr={2}><LuArrowRight /></Box>
                           Connect
-                        </Button>
-                      )}
-
-                      {config.current_profile === profile.name && (
-                        <Button
-                          size="sm"
-                          colorScheme="blue"
-                          variant="outline"
-                          disabled
-                        >
-                          <Box mr={2}><LuCheck /></Box>
-                          Active
                         </Button>
                       )}
 
@@ -302,7 +276,7 @@ function Profiles({
                           aria-label="Delete profile"
                           children={<LuTrash2 />}
                           size="sm"
-                          colorScheme="red"
+                          colorPalette="red"
                           variant="ghost"
                           onClick={() => { setSelectedProfile({ profile, usedFor: "delete" }); }}
                           disabled={config.profiles.length <= 1}
@@ -313,7 +287,7 @@ function Profiles({
                 </Box>
               ))}
             </VStack>
-          )}
+          }
         </Box>
       </VStack>
 
@@ -333,7 +307,7 @@ function Profiles({
         <Dialog.Root modal={true} open={true}>
           <Dialog.Backdrop />
           <Dialog.Positioner>
-            <Dialog.Content maxWidth="450px">
+            <Dialog.Content>
               <Dialog.Header>
                 <Dialog.Title>Delete Profile</Dialog.Title>
               </Dialog.Header>
@@ -344,7 +318,7 @@ function Profiles({
                     Are you sure you want to delete the profile "{selectedProfile.profile.name}"?
                   </Text>
                   {config?.current_profile === selectedProfile.profile.name && (
-                    <Text color="red.500">
+                    <Text color="red.solid">
                       Warning: This is your active profile. Deleting it will connect you to another available profile.
                     </Text>
                   )}
@@ -355,7 +329,7 @@ function Profiles({
                   Cancel
                 </Button>
                 <Button
-                  colorScheme="red"
+                  colorPalette="red"
                   onClick={confirmDeleteProfile}
                   loading={loading}
                 >

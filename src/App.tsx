@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Box, Flex } from "@chakra-ui/react";
+import { Flex } from "@chakra-ui/react";
 import { Tabs } from "@chakra-ui/react";
 import Profiles from "./components/Profiles";
 import Settings from "./components/Settings";
@@ -201,7 +201,6 @@ function App() {
       <Flex h="100vh" width="100%">
         {/* Left sidebar with vertical tabs - structured for responsive layout */}
         <Tabs.Root
-          lazyMount
           variant={"enclosed"}
           value={activeTab}
           onValueChange={handleTabChange}
@@ -261,6 +260,7 @@ function App() {
           <Tabs.Content value="profiles" h="100%">
             <Profiles
               onCurrentProfileChanged={() => {
+                console.log("I'm gonna set shouldRefreshDashboard!")
                 setShouldRefreshDashboard(true);
                 // Reload config after profile changes
                 loadConfig();

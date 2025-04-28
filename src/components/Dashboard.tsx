@@ -31,7 +31,7 @@ import debounce from "lodash.debounce";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
-import { useDelayedLoading } from "@/hooks/useDelayedLoading";
+import { useDebounce } from "@uidotdev/usehooks";
 
 // 表格单元格中的 Tooltip 组件
 const TableRowTooltip = ({
@@ -73,7 +73,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   const [tableData, setTableData] = useState<Array<{ key: string, value: string }>>([]);
   const [loading, setLoading] = useState(appInitializing);
   // Add delayed loading state to prevent UI flashing for quick operations
-  const delayedLoading = useDelayedLoading(loading, 800);
+  const delayedLoading = useDebounce(loading, 800);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // UI state
