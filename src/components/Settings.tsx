@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { MutableRefObject } from "react";
 import {
   Box,
@@ -38,15 +38,13 @@ function Settings({
   onConfigUpdate,
   onBeforeTabChange
 }: SettingsProps) {
-  const [saving, setSaving] = useState(false);
+  const [configSaving, setConfigSaving] = useState(false);
   const [colorTheme, setColorTheme] = useState<"Light" | "Dark" | "System">("System");
-  // Track original theme from config to detect changes
-  const [originalTheme, setOriginalTheme] = useState<"Light" | "Dark" | "System">("System");
-  // Add state for config file path
+  const themeInAppConfig = useMemo(() => config?.color_theme, [config]);
   const [configPath, setConfigPath] = useState<string>("");
   const [configPathLoading, setConfigPathLoading] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
-  const { setColorMode, colorMode } = useColorMode();
+  const { setColorMode } = useColorMode();
 
   // Dialog state for unsaved changes
   const [dialogState, setDialogState] = useState<{
@@ -106,7 +104,7 @@ function Settings({
     if (!config) return;
 
     try {
-      setSaving(true);
+      setConfigSaving(true);
 
       // Update config with new theme
       const updatedConfig = {
@@ -115,7 +113,6 @@ function Settings({
       };
 
       await onConfigUpdate(updatedConfig);
-      setOriginalTheme(colorTheme); // Update original theme after successful save
 
       toaster.create({
         title: "Settings saved",
@@ -132,15 +129,15 @@ function Settings({
         meta: { closable: true },
       });
     } finally {
-      setSaving(false);
+      setConfigSaving(false);
     }
   };
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = useCallback(() => {
     if (!config) return false;
-    return colorTheme !== originalTheme;
-  }, [colorTheme, originalTheme, config]);
+    return colorTheme !== themeInAppConfig;
+  }, [colorTheme, config]);
 
   // Expose method to check before tab change
   useEffect(() => {
@@ -173,8 +170,8 @@ function Settings({
   };
 
   const handleDiscardAndContinue = () => {
-    if (config) {
-      setColorTheme(originalTheme);
+    if (themeInAppConfig) {
+      setColorTheme(themeInAppConfig);
     }
     if (dialogState.resolve) {
       dialogState.resolve(true);
@@ -205,19 +202,14 @@ function Settings({
         });
         break;
     }
-
-    return () => {
-      // Reset color mode to system default when component unmounts
-      setColorMode(colorMode);
-    }
-  }, [colorTheme])
+  }, [colorTheme]);
 
   // Initialize theme from config
   useEffect(() => {
-    if (config && config.color_theme) {
-      setColorTheme(config.color_theme);
-      setOriginalTheme(config.color_theme);
-    }
+    if (!config) return;
+
+    setColorTheme(config.color_theme);
+
   }, [config]);
 
   // Theme options with icons
@@ -304,7 +296,7 @@ function Settings({
                 colorScheme="blue"
                 onClick={handleSaveTheme}
                 disabled={!hasUnsavedChanges()}
-                loading={saving}
+                loading={configSaving}
               >
                 Save Changes
               </Button>
