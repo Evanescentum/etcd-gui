@@ -27,11 +27,10 @@ import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
 import { toaster } from "../components/ui/toaster";
 import { AppConfig, fetchEtcdItems } from "../api/etcd";
-import debounce from "lodash.debounce";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
-import { useDebounce } from "@uidotdev/usehooks";
+import { useDebounce, useDebouncedCallback } from "use-debounce";
 
 // 表格单元格中的 Tooltip 组件
 const TableRowTooltip = ({
@@ -73,7 +72,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   const [tableData, setTableData] = useState<Array<{ key: string, value: string }>>([]);
   const [loading, setLoading] = useState(appInitializing);
   // Add delayed loading state to prevent UI flashing for quick operations
-  const delayedLoading = useDebounce(loading, 800);
+  const [delayedLoading] = useDebounce(loading, 800);
   const [loadError, setLoadError] = useState<string | null>(null);
 
   // UI state
@@ -100,7 +99,6 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
     value: string,
   } | null>(null);
 
-
   // Load etcd data function
   async function loadEtcdData() {
     setLoading(true);
@@ -122,6 +120,12 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
       setLoading(false);
     }
   }
+  const debouncedLoadEtcdData = useDebouncedCallback(loadEtcdData, 300);
+
+  useEffect(() => {
+    // Use debounced version of loadEtcdData that only executes 300ms after last call
+    debouncedLoadEtcdData();
+  }, [keyPrefix]);
 
   // Effect to handle force refresh from parent
   useEffect(() => {
@@ -135,32 +139,15 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
 
   // Filter and paginate data
   const filteredData = useMemo(() => {
-    return tableData
-      .filter(item => (
-        searchQuery ? item.key.includes(searchQuery) || item.value.includes(searchQuery) : true
-      ));
+    return tableData.filter(item => (
+      searchQuery ? item.key.includes(searchQuery) || item.value.includes(searchQuery) : true
+    ));
   }, [tableData, keyPrefix, searchQuery]);
 
   const paginatedData = useMemo(() => {
     const startIndex = (currentPage - 1) * pageSize;
     return filteredData.slice(startIndex, startIndex + pageSize);
   }, [filteredData, currentPage, pageSize]);
-
-  const handleKeyDelete = (key: string, value: string) => {
-    setDialogState({
-      action: "delete",
-      key,
-      value,
-    });
-  };
-
-  const handleKeyEdit = (key: string, value: string) => {
-    setDialogState({
-      action: "edit",
-      key,
-      value,
-    });
-  };
 
   // Define the end element for search input
   const searchEndElement = searchQuery ? (
@@ -210,11 +197,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
               <Input
                 fontFamily="mono"
                 value={keyPrefix}
-                onChange={(e) => {
-                  setKeyPrefix(e.target.value);
-                  // Use debounced version of loadEtcdData that only executes 300ms after last call
-                  debounce(loadEtcdData, 300)();
-                }}
+                onChange={(e) => setKeyPrefix(e.target.value)}
                 placeholder="Key prefix"
                 flex="1"
               />
@@ -229,7 +212,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                 <InputGroup endElement={searchEndElement} flex="1">
                   <Input
                     fontFamily="mono"
-                    placeholder="Search keys..."
+                    placeholder="Search keys and values..."
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -245,7 +228,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                   onClick={() => setDialogState({ action: "add", key: "", value: "" })}
                   colorScheme="blue"
                 >
-                  <Box mr={2}><LuPlus /></Box>
+                  <LuPlus />
                   Add
                 </Button>
               </Tooltip>
@@ -307,7 +290,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                           aria-label="Edit"
                           children={<TbEdit />}
                           size="sm"
-                          onClick={() => handleKeyEdit(item.key, item.value)}
+                          onClick={() => setDialogState({ action: "edit", key: item.key, value: item.value, })}
                         />
                       </Tooltip>
                       <Tooltip content="Delete key" showArrow>
@@ -317,7 +300,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                           size="sm"
                           colorScheme="red"
                           variant="ghost"
-                          onClick={() => handleKeyDelete(item.key, item.value)}
+                          onClick={() => setDialogState({ action: "delete", key: item.key, value: item.value })}
                         />
                       </Tooltip>
                     </HStack>

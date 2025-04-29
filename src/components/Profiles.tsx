@@ -17,7 +17,7 @@ import { toaster } from "../components/ui/toaster";
 import { initializeEtcdClient } from "../api/etcd";
 import type { AppConfig, Profile } from "../api/etcd";
 import ProfileEditDialog from "./dialogs/ProfileEditDialog";
-import { useDebounce } from "@uidotdev/usehooks";
+import { useDebounce } from "use-debounce";
 
 interface ProfilesProps {
   onCurrentProfileChanged?: () => void;
@@ -33,7 +33,7 @@ function Profiles({
   onConfigUpdate,
 }: ProfilesProps) {
   let [loading, setLoading] = useState(configLoading);
-  loading = useDebounce(loading, 200);
+  [loading] = useDebounce(loading, 200);
   const [selectedProfile, setSelectedProfile] = useState<{
     profile: Profile,
     usedFor: "create" | "edit" | "delete"
