@@ -155,3 +155,31 @@ export async function openConfigFile(): Promise<void> {
 export async function testConnection(profile: Profile): Promise<string> {
     return await invoke<string>('test_connection', { profile });
 }
+
+/**
+ * Save a path to the history
+ * @param path The path to save
+ * @param profileName The current profile name
+ */
+export async function savePathToHistory(path: string, profileName: string): Promise<void> {
+    try {
+        await invoke<void>('save_path_history', { path, profileName });
+    } catch (error) {
+        console.error('Error saving path to history:', error);
+        throw error;
+    }
+}
+
+/**
+ * Get the path history for a profile
+ * @param profileName The profile name to get history for
+ * @returns Array of path strings
+ */
+export async function getPathHistory(profileName: string): Promise<string[]> {
+    try {
+        return await invoke<string[]>('get_path_history', { profileName });
+    } catch (error) {
+        console.error('Error getting path history:', error);
+        throw error;
+    }
+}

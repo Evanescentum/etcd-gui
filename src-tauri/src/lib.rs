@@ -5,6 +5,10 @@ mod state;
 
 use client::should_refresh;
 use state::AppState;
+use std::collections::HashMap;
+use std::fs::{File, OpenOptions};
+use std::io::{Read, Write};
+use std::path::PathBuf;
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 
@@ -142,6 +146,90 @@ async fn open_config_file(app_handle: tauri::AppHandle) -> Result<(), String> {
     open::that(path).map_err(|e| format!("Failed to open config file: {}", e))
 }
 
+#[tauri::command]
+async fn save_path_history(
+    path: String,
+    profile_name: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    let history_path = get_history_file_path(&app_handle)?;
+
+    // Read existing history map
+    let mut history_map: HashMap<String, Vec<String>> = match read_history_file(&history_path) {
+        Ok(h) => h,
+        Err(_) => HashMap::new(),
+    };
+
+    // Get or create history for this profile
+    let history = history_map.entry(profile_name).or_insert_with(Vec::new);
+
+    // Don't add duplicates, remove if exists and add to front
+    history.retain(|p| p != &path);
+    history.insert(0, path);
+
+    // Keep only the most recent 20 entries for this profile
+    while history.len() > 20 {
+        history.pop();
+    }
+
+    // Write back to file
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(&history_path)
+        .map_err(|e| format!("Failed to open history file: {e}"))?;
+
+    let content = serde_json::to_string(&history_map)
+        .map_err(|e| format!("Failed to serialize history: {e}"))?;
+
+    file.write_all(content.as_bytes())
+        .map_err(|e| format!("Failed to write history: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_path_history(
+    profile_name: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    let history_path = get_history_file_path(&app_handle)?;
+
+    match read_history_file(&history_path) {
+        Ok(history_map) => Ok(history_map.get(&profile_name).cloned().unwrap_or_default()),
+        Err(_) => Ok(Vec::new()),
+    }
+}
+
+fn get_history_file_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
+    let app_dir = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("Failed to get app data directory: {e}"))?;
+
+    // Create directory if it doesn't exist
+    if !app_dir.exists() {
+        std::fs::create_dir_all(&app_dir)
+            .map_err(|e| format!("Failed to create app data directory: {e}"))?;
+    }
+
+    Ok(app_dir.join("path_history.json"))
+}
+
+fn read_history_file(path: &PathBuf) -> Result<HashMap<String, Vec<String>>, std::io::Error> {
+    if !path.exists() {
+        return Ok(HashMap::new());
+    }
+
+    let mut file = File::open(path)?;
+    let mut contents = String::new();
+    file.read_to_string(&mut contents)?;
+
+    serde_json::from_str(&contents)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -158,7 +246,9 @@ pub fn run() {
             test_connection,
             config_file_exists,
             config_file_path,
-            open_config_file // Add the new command to the handler
+            open_config_file,
+            save_path_history,
+            get_path_history
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));

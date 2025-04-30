@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import {
   Box,
   ButtonGroup,
@@ -22,15 +22,15 @@ import {
   Portal,
   createListCollection
 } from "@chakra-ui/react";
-import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight } from "react-icons/lu";
+import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
 import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
 import { toaster } from "../components/ui/toaster";
-import { AppConfig, fetchEtcdItems, initializeEtcdClient } from "../api/etcd";
+import { AppConfig, fetchEtcdItems, initializeEtcdClient, savePathToHistory, getPathHistory } from "../api/etcd";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
-import { useDebounce, useDebouncedCallback } from "use-debounce";
+import { useDebounce } from "use-debounce";
 
 // 表格单元格中的 Tooltip 组件
 const TableRowTooltip = ({
@@ -78,6 +78,28 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   // UI state
   const [keyPrefix, setKeyPrefix] = useState("/");
   const [searchQuery, setSearchQuery] = useState("");
+  
+  // Path history state
+  const [pathHistory, setPathHistory] = useState<string[]>([]);
+  const [showPathSuggestions, setShowPathSuggestions] = useState(false);
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  
+  // Get current profile name - needed for path history
+  const currentProfileName = appConfig?.current_profile || "default";
+
+  // Close dropdown when clicking outside - implement manually since we can't import useOutsideClick
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowPathSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownRef]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -99,6 +121,21 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
     value: string,
   } | null>(null);
 
+  // Load path history
+  useEffect(() => {
+    async function loadPathHistory() {
+      if (!currentProfileName) return;
+      
+      try {
+        const history = await getPathHistory(currentProfileName);
+        setPathHistory(history);
+      } catch (error) {
+        console.error('Failed to load path history:', error);
+      }
+    }
+    loadPathHistory();
+  }, []);
+
   // Load etcd data function
   async function loadEtcdData() {
     setLoading(true);
@@ -107,6 +144,12 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
     try {
       const items = await fetchEtcdItems(keyPrefix);
       setTableData(items);
+      
+      // Refresh path history
+      if (currentProfileName) {
+        const history = await getPathHistory(currentProfileName);
+        setPathHistory(history);
+      }
     } catch (error) {
       console.error('Failed to load etcd data:', error);
       setLoadError(error as string);
@@ -120,12 +163,27 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
       setLoading(false);
     }
   }
-  const debouncedLoadEtcdData = useDebouncedCallback(loadEtcdData, 300);
-
-  useEffect(() => {
-    // Use debounced version of loadEtcdData that only executes 300ms after last call
-    debouncedLoadEtcdData();
-  }, [keyPrefix]);
+  
+  // Handle manual refresh when Enter key is pressed or refresh button is clicked
+  const handleManualRefresh = async () => {
+    if (!currentProfileName) {
+      toaster.create({
+        title: "No Profile Selected",
+        description: "Please select a profile before querying etcd.",
+        type: "warning",
+      });
+      return;
+    }
+    
+    try {
+      // Save path to history before loading data
+      await savePathToHistory(keyPrefix, currentProfileName);
+      // Then load data
+      await loadEtcdData();
+    } catch (error) {
+      console.error('Error during manual refresh:', error);
+    }
+  };
 
   // Effect to handle force refresh from parent
   useEffect(() => {
@@ -149,6 +207,20 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
     const startIndex = (currentPage - 1) * pageSize;
     return filteredData.slice(startIndex, startIndex + pageSize);
   }, [filteredData, currentPage, pageSize]);
+
+  // Handle path selection from dropdown
+  const handleSelectPath = async (path: string) => {
+    setKeyPrefix(path);
+    setShowPathSuggestions(false);
+    
+    if (currentProfileName) {
+      // Save selected path to history (move to top of list)
+      await savePathToHistory(path, currentProfileName);
+    }
+    
+    // Load data for the selected path
+    await loadEtcdData();
+  };
 
   // Define the end element for search input
   const searchEndElement = searchQuery ? (
@@ -175,33 +247,93 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
         >
           <Heading size="md">ETCD GUI</Heading>
           <Spacer />
-          <Tooltip content="Refresh key list" showArrow>
-            <IconButton
-              aria-label="Refresh"
-              children={<LuRefreshCw />}
-              size="sm"
-              onClick={loadEtcdData}
-              loading={loading} // Keep using immediate loading for button states
-            />
-          </Tooltip>
         </Flex>
 
         {/* Main content */}
         {/* Toolbar */}
         <Box p={4} borderBottomWidth="1px">
           <VStack gap={4}>
-            {/* Path navigation */}
-            <Flex width="full" align="center" gap={2}>
+            {/* Path navigation with history dropdown and refresh button */}
+            <Flex width="full" align="center" gap={2} position="relative">
               <Box borderWidth="1px" borderRadius="md" p={2}>
                 <LuFolder />
               </Box>
-              <Input
-                fontFamily="mono"
-                value={keyPrefix}
-                onChange={(e) => setKeyPrefix(e.target.value)}
-                placeholder="Key prefix"
-                flex="1"
-              />
+              <Box position="relative" flex="1" ref={dropdownRef}>
+                <InputGroup>
+                  <Input
+                    ref={pathInputRef}
+                    fontFamily="mono"
+                    value={keyPrefix}
+                    onChange={(e) => setKeyPrefix(e.target.value)}
+                    onFocus={() => pathHistory.length > 0 && setShowPathSuggestions(true)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        handleManualRefresh();
+                        setShowPathSuggestions(false);
+                      }
+                    }}
+                    placeholder="Key prefix"
+                    flex="1"
+                  />
+                </InputGroup>
+                
+                {pathHistory.length > 0 && (
+                  <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)" zIndex={2}>
+                    <Tooltip content="Show history" showArrow>
+                      <IconButton
+                        aria-label="Path history"
+                        children={<LuHistory />}
+                        onClick={() => setShowPathSuggestions(!showPathSuggestions)}
+                        size="sm"
+                        variant="ghost"
+                      />
+                    </Tooltip>
+                  </Box>
+                )}
+
+                {/* Path suggestions dropdown */}
+                {showPathSuggestions && pathHistory.length > 0 && (
+                  <Box
+                    position="absolute"
+                    top="100%"
+                    left={0}
+                    right={0}
+                    mt={1}
+                    zIndex={10}
+                    bg="white"
+                    borderWidth="1px"
+                    borderRadius="md"
+                    boxShadow="md"
+                    _dark={{ bg: "gray.700" }}
+                    maxH="200px"
+                    overflowY="auto"
+                  >
+                    {pathHistory.map((path, index) => (
+                      <Box
+                        key={index}
+                        p={2}
+                        cursor="pointer"
+                        _hover={{ bg: "blackAlpha.50", _dark: { bg: "whiteAlpha.50" } }}
+                        onClick={() => handleSelectPath(path)}
+                        fontFamily="mono"
+                        fontSize="sm"
+                      >
+                        {path}
+                      </Box>
+                    ))}
+                  </Box>
+                )}
+              </Box>
+              
+              <Tooltip content="Refresh key list" showArrow>
+                <IconButton
+                  aria-label="Refresh"
+                  children={<LuRefreshCw />}
+                  onClick={handleManualRefresh}
+                  loading={loading}
+                  size="sm"
+                />
+              </Tooltip>
             </Flex>
 
             {/* Search and actions */}
