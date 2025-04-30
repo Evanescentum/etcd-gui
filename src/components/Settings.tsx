@@ -29,13 +29,13 @@ const webviewWindow = getCurrentWebviewWindow();
 // Define the props interface for the Settings component
 interface SettingsProps {
   config: AppConfig | null;
-  onConfigUpdate: (config: AppConfig) => Promise<AppConfig>;
+  saveConfig: (config: AppConfig) => Promise<void>;
   onBeforeTabChange?: MutableRefObject<((newTab: string) => Promise<boolean>) | undefined>;
 }
 
 function Settings({
   config,
-  onConfigUpdate,
+  saveConfig,
   onBeforeTabChange
 }: SettingsProps) {
   const [configSaving, setConfigSaving] = useState(false);
@@ -112,7 +112,7 @@ function Settings({
         color_theme: colorTheme,
       };
 
-      await onConfigUpdate(updatedConfig);
+      await saveConfig(updatedConfig);
 
       toaster.create({
         title: "Settings saved",

@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Flex } from "@chakra-ui/react";
 import { Tabs } from "@chakra-ui/react";
 import Profiles from "./components/Profiles";
 import Settings from "./components/Settings";
@@ -8,7 +7,7 @@ import { LuLayoutDashboard, LuUsers, LuSettings } from "react-icons/lu";
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
 import type { AppConfig } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
-import { useColorModeValue, useColorMode } from "./components/ui/color-mode";
+import { useColorMode } from "./components/ui/color-mode";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { lazy } from "react";
 
@@ -68,7 +67,6 @@ function App() {
       setConfigLoading(true);
       await updateConfig(newConfig);
       setAppConfig(newConfig);
-      return newConfig;
     } catch (error) {
       console.error("Failed to update config:", error);
       toaster.create({
@@ -198,87 +196,67 @@ function App() {
 
   return (
     <>
-      <Flex h="100vh" width="100%">
-        {/* Left sidebar with vertical tabs - structured for responsive layout */}
-        <Tabs.Root
-          variant={"enclosed"}
-          value={activeTab}
-          onValueChange={handleTabChange}
-          orientation="vertical"
-          width="100%"
-          height="100vh"
-          display="flex"
+      {/* Left sidebar */}
+      <Tabs.Root
+        variant={"enclosed"}
+        value={activeTab}
+        onValueChange={handleTabChange}
+        orientation="vertical"
+        width="100vw"
+        height="100vh"
+        display="flex"
+      >
+        <Tabs.List
+          borderRightWidth="thin"
+          borderColor="gray.subtle"
+          width="15rem"
+          borderRadius="none"
         >
-          {/* Fixed width sidebar */}
-          <Tabs.List
-            borderRightWidth="1px"
-            borderColor="gray.200"
-            py={4}
-            width="200px"
-            flexShrink={0}
-            borderRadius="none"
-            borderRightColor={useColorModeValue("gray.300", "gray.600")}
+          <Tabs.Trigger
+            value="dashboard"
+            justifyContent="flex-start"
           >
-            <Tabs.Trigger
-              value="dashboard"
-              justifyContent="flex-start"
-              px={4}
-              py={3}
-              gap={2}
-            >
-              <LuLayoutDashboard /> Dashboard
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="profiles"
-              justifyContent="flex-start"
-              px={4}
-              py={3}
-              gap={2}
-            >
-              <LuUsers /> Profiles
-            </Tabs.Trigger>
-            <Tabs.Trigger
-              value="settings"
-              justifyContent="flex-start"
-              px={4}
-              py={3}
-              gap={2}
-            >
-              <LuSettings /> Settings
-            </Tabs.Trigger>
-          </Tabs.List>
+            <LuLayoutDashboard /> Dashboard
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="profiles"
+            justifyContent="flex-start"
+          >
+            <LuUsers /> Profiles
+          </Tabs.Trigger>
+          <Tabs.Trigger
+            value="settings"
+            justifyContent="flex-start"
+          >
+            <LuSettings /> Settings
+          </Tabs.Trigger>
+        </Tabs.List>
 
-          {/* Content area */}
-          <Tabs.Content value="dashboard" flex="1" w="100%" h="100%">
-            <Dashboard
-              appInitializing={initializing}
-              appConfig={appConfig}
-              shouldRefresh={shouldRefreshDashboard}
-              onRefreshComplete={() => setShouldRefreshDashboard(false)}
-            />
-          </Tabs.Content>
-          <Tabs.Content value="profiles" h="100%">
-            <Profiles
-              onCurrentProfileChanged={() => {
-                console.log("I'm gonna set shouldRefreshDashboard!")
-                setShouldRefreshDashboard(true);
-                // Reload config after profile changes
-                loadConfig();
-              }}
-              config={appConfig}
-              configLoading={configLoading}
-              onConfigUpdate={saveConfig}
-            />
-          </Tabs.Content>
-          <Tabs.Content value="settings" h="100%">
-            <Settings
-              onBeforeTabChange={checkBeforeTabChangeRef}
-              config={appConfig}
-              onConfigUpdate={saveConfig}
-            />
-          </Tabs.Content>
-        </Tabs.Root>
-      </Flex>
+        {/* Content area */}
+        <Tabs.Content value="dashboard" paddingX={2} width="100%" height="100%">
+          <Dashboard
+            appInitializing={initializing}
+            appConfig={appConfig}
+            shouldRefresh={shouldRefreshDashboard}
+            onRefreshComplete={() => setShouldRefreshDashboard(false)}
+          />
+        </Tabs.Content>
+        <Tabs.Content value="profiles" paddingX={2} width="100%" height="100%">
+          <Profiles
+            onCurrentProfileChanged={() => setShouldRefreshDashboard(true)}
+            config={appConfig}
+            configLoading={configLoading}
+            saveConfig={saveConfig}
+          />
+        </Tabs.Content>
+        <Tabs.Content value="settings" paddingX={2} width="100%" height="100%">
+          <Settings
+            onBeforeTabChange={checkBeforeTabChangeRef}
+            config={appConfig}
+            saveConfig={saveConfig}
+          />
+        </Tabs.Content>
+      </Tabs.Root>
 
       <Toaster />
     </>

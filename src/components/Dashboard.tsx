@@ -26,7 +26,7 @@ import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChe
 import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
 import { toaster } from "../components/ui/toaster";
-import { AppConfig, fetchEtcdItems } from "../api/etcd";
+import { AppConfig, fetchEtcdItems, initializeEtcdClient } from "../api/etcd";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
@@ -131,6 +131,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   useEffect(() => {
     if (shouldRefresh) {
       setTableData([]);
+      initializeEtcdClient();
       loadEtcdData();
       // Notify parent that refresh is complete
       onRefreshComplete?.();

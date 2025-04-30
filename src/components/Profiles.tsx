@@ -23,14 +23,14 @@ interface ProfilesProps {
   onCurrentProfileChanged?: () => void;
   config: AppConfig | null;
   configLoading: boolean;
-  onConfigUpdate: (config: AppConfig) => Promise<AppConfig>;
+  saveConfig: (config: AppConfig) => Promise<void>;
 }
 
 function Profiles({
   onCurrentProfileChanged,
   config,
   configLoading,
-  onConfigUpdate,
+  saveConfig,
 }: ProfilesProps) {
   let [loading, setLoading] = useState(configLoading);
   [loading] = useDebounce(loading, 200);
@@ -54,7 +54,7 @@ function Profiles({
       current_profile: profileName
     };
 
-    await onConfigUpdate(updatedConfig);
+    await saveConfig(updatedConfig);
 
     // Reconnect to etcd with the new profile
     initializeEtcdClient();
@@ -107,16 +107,10 @@ function Profiles({
         current_profile
       };
 
-      await onConfigUpdate(updatedConfig);
+      await saveConfig(updatedConfig);
 
-      // If we changed the active profile, reconnect
       if (current_profile !== config.current_profile) {
-        await initializeEtcdClient();
-      }
-
-      // Notify parent component about profile change
-      if (current_profile !== config.current_profile) {
-        onCurrentProfileChanged?.();
+        onCurrentProfileChanged?.()  // Notify parent component about profile change;
       }
 
       toaster.create({
@@ -163,7 +157,7 @@ function Profiles({
         profiles: updatedProfiles,
       };
 
-      await onConfigUpdate(updatedConfig);
+      await saveConfig(updatedConfig);
 
       if (profile.name === config.current_profile) {
         await initializeEtcdClient();
@@ -209,85 +203,83 @@ function Profiles({
 
         {/* Profile list */}
         <Box mt={4}>
-          {
-            <VStack gap={3} align="stretch">
-              {config?.profiles.map((profile) => (
-                <Box
-                  key={profile.name}
-                  p={4}
-                  borderWidth="1px"
-                  borderRadius="md"
-                  borderColor={isCurrentProfile(profile.name) ? "blue.fg" : "gray.muted"}
-                  bg={isCurrentProfile(profile.name) ? "bg.emphasized" : "bg.info"}
-                  position="relative"
-                >
-                  <Flex align="center">
-                    <Box p={2} borderRadius="md" bg={isCurrentProfile(profile.name) ? "blue.300" : "gray.300"}>
-                      <LuServer />
-                    </Box>
+          <VStack gap={3} align="stretch">
+            {config?.profiles.map((profile) => (
+              <Box
+                key={profile.name}
+                p={4}
+                borderWidth="thin"
+                borderRadius="lg"
+                borderColor={isCurrentProfile(profile.name) ? "blue.emphasized" : "gray.muted"}
+                bg={isCurrentProfile(profile.name) ? "blue.subtle" : "bg.subtle"}
+                position="relative"
+              >
+                <Flex align="center">
+                  <Box p={2} borderRadius="md" bg={isCurrentProfile(profile.name) ? "blue.300" : "gray.300"}>
+                    <LuServer />
+                  </Box>
 
-                    <VStack ml={4} align="flex-start" flex={1} gap={0}>
-                      <Flex align="center" gap={2}>
-                        <Text fontWeight="bold">{profile.name}</Text>
-                        {profile.locked && (
-                          <Tooltip content="Read-only mode" openDelay={100} closeDelay={200}><LuLock /></Tooltip>
-                        )}
-                      </Flex>
-                      <Text fontSize="sm" color="gray.600">
-                        {profile.endpoints.map(e => `${e.host}:${e.port}`).join(", ")}
-                      </Text>
-                    </VStack>
-
-                    <HStack gap={2}>
-                      {isCurrentProfile(profile.name) ? (
-                        <Button
-                          size="sm"
-                          colorPalette="blue"
-                          variant="ghost"
-                          disabled
-                        >
-                          <Box mr={2}><LuCheck /></Box>
-                          Active
-                        </Button>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleActivateProfile(profile.name)}
-                          loading={loading}
-                        >
-                          <Box mr={2}><LuArrowRight /></Box>
-                          Connect
-                        </Button>
+                  <VStack ml={4} align="flex-start" flex={1} gap={0}>
+                    <Flex align="center" gap={2}>
+                      <Text fontWeight="bold">{profile.name}</Text>
+                      {profile.locked && (
+                        <Tooltip content="Read-only mode" openDelay={100} closeDelay={200}><LuLock /></Tooltip>
                       )}
+                    </Flex>
+                    <Text fontSize="sm" color="gray.600">
+                      {profile.endpoints.map(e => `${e.host}:${e.port}`).join(", ")}
+                    </Text>
+                  </VStack>
 
-                      <Tooltip content="Edit profile" showArrow>
-                        <IconButton
-                          aria-label="Edit profile"
-                          children={<TbEdit />}
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => { setSelectedProfile({ profile: profile, usedFor: "edit" }); }}
-                        />
-                      </Tooltip>
+                  <HStack gap={2}>
+                    {isCurrentProfile(profile.name) ? (
+                      <Button
+                        size="sm"
+                        colorPalette="blue"
+                        variant="ghost"
+                        disabled
+                      >
+                        <Box mr={2}><LuCheck /></Box>
+                        Active
+                      </Button>
+                    ) : (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleActivateProfile(profile.name)}
+                        loading={loading}
+                      >
+                        <Box mr={2}><LuArrowRight /></Box>
+                        Connect
+                      </Button>
+                    )}
 
-                      <Tooltip content="Delete profile" showArrow>
-                        <IconButton
-                          aria-label="Delete profile"
-                          children={<LuTrash2 />}
-                          size="sm"
-                          colorPalette="red"
-                          variant="ghost"
-                          onClick={() => { setSelectedProfile({ profile, usedFor: "delete" }); }}
-                          disabled={config.profiles.length <= 1}
-                        />
-                      </Tooltip>
-                    </HStack>
-                  </Flex>
-                </Box>
-              ))}
-            </VStack>
-          }
+                    <Tooltip content="Edit profile" showArrow>
+                      <IconButton
+                        aria-label="Edit profile"
+                        children={<TbEdit />}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => { setSelectedProfile({ profile: profile, usedFor: "edit" }); }}
+                      />
+                    </Tooltip>
+
+                    <Tooltip content="Delete profile" showArrow>
+                      <IconButton
+                        aria-label="Delete profile"
+                        children={<LuTrash2 />}
+                        size="sm"
+                        colorPalette="red"
+                        variant="ghost"
+                        onClick={() => { setSelectedProfile({ profile, usedFor: "delete" }); }}
+                        disabled={config.profiles.length <= 1}
+                      />
+                    </Tooltip>
+                  </HStack>
+                </Flex>
+              </Box>
+            ))}
+          </VStack>
         </Box>
       </VStack>
 
