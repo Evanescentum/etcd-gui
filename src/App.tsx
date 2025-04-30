@@ -1,9 +1,17 @@
 import { useState, useEffect, useRef } from "react";
-import { Tabs } from "@chakra-ui/react";
+import {
+  Tabs,
+  EmptyState,
+  Button,
+  VStack,
+  Center,
+  Text,
+  Spinner
+} from "@chakra-ui/react";
 import Profiles from "./components/Profiles";
 import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
-import { LuLayoutDashboard, LuUsers, LuSettings } from "react-icons/lu";
+import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert } from "react-icons/lu";
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
 import type { AppConfig } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
@@ -21,7 +29,6 @@ function App() {
 
   // Add state for active tab
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [initializing, setInitializing] = useState(true);
   const [shouldRefreshDashboard, setShouldRefreshDashboard] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
@@ -30,23 +37,19 @@ function App() {
 
   // Add centralized config state
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
-  const [configLoading, setConfigLoading] = useState(false);
+  const [configLoading, setConfigLoading] = useState(true);
+  const configError = useRef<string | null>(null);
 
   // Load config function that can be used by components to trigger a refresh
   const loadConfig = async () => {
     try {
       setConfigLoading(true);
+      configError.current = null;
       const config = await getConfig();
       setAppConfig(config);
     } catch (error) {
       console.error("Failed to load config:", error);
-      toaster.create({
-        title: "Configuration Error",
-        description: "Failed to load application configuration",
-        type: "error",
-        meta: { closable: true },
-      });
-      throw error;
+      configError.current = error as string;
     } finally {
       setConfigLoading(false);
     }
@@ -85,22 +88,17 @@ function App() {
   useEffect(() => {
     const initialize = async () => {
       try {
-        setInitializing(true);
-
         // Check if config file exists
         const hasConfig = await configFileExists();
 
         // If config doesn't exist, show onboarding
         if (!hasConfig) {
           setShowOnboarding(true);
-          setInitializing(false);
           return;
         }
 
-        // Load the config first
         await loadConfig();
 
-        // Then initialize the client
         const result = await initializeEtcdClient();
 
         // If result is empty string, switch to profiles tab
@@ -128,8 +126,6 @@ function App() {
           type: "error",
           meta: { closable: true },
         });
-      } finally {
-        setInitializing(false);
       }
     };
 
@@ -194,6 +190,56 @@ function App() {
     );
   }
 
+  // If appConfig is null, render the EmptyState component
+  if (!appConfig) {
+    if (configLoading) {
+      // Just return a spinner
+      return (
+        <Center h="100vh">
+          <EmptyState.Root>
+            <EmptyState.Content>
+              <EmptyState.Indicator>
+                <Spinner size="lg" borderWidth="3px" />
+              </EmptyState.Indicator>
+            </EmptyState.Content>
+          </EmptyState.Root>
+        </Center>
+      )
+    }
+
+    return (
+      <Center h="100vh">
+        <EmptyState.Root>
+          <EmptyState.Content>
+            <EmptyState.Indicator>
+              <LuTriangleAlert color="red" />
+            </EmptyState.Indicator>
+            <VStack textAlign="center" gap={3}>
+              <EmptyState.Title>
+                Configuration Error
+              </EmptyState.Title>
+              <EmptyState.Description>
+                Failed to load configuration:
+                <Text color="red.500" fontWeight="medium" mt={2}>
+                  {configError.current}
+                </Text>
+              </EmptyState.Description>
+              <Button
+                onClick={loadConfig}
+                mt={4}
+                loading={configLoading}
+              >
+                <LuRefreshCw style={{ marginRight: '0.5rem' }} />
+                Retry
+              </Button>
+            </VStack>
+          </EmptyState.Content>
+        </EmptyState.Root>
+        <Toaster />
+      </Center>
+    );
+  }
+
   return (
     <>
       {/* Left sidebar */}
@@ -235,7 +281,7 @@ function App() {
         {/* Content area */}
         <Tabs.Content value="dashboard" paddingX={2} width="100%" height="100%">
           <Dashboard
-            appInitializing={initializing}
+            configLoading={configLoading}
             appConfig={appConfig}
             shouldRefresh={shouldRefreshDashboard}
             onRefreshComplete={() => setShouldRefreshDashboard(false)}

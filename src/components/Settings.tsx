@@ -28,7 +28,7 @@ const webviewWindow = getCurrentWebviewWindow();
 
 // Define the props interface for the Settings component
 interface SettingsProps {
-  config: AppConfig | null;
+  config: AppConfig;
   saveConfig: (config: AppConfig) => Promise<void>;
   onBeforeTabChange?: MutableRefObject<((newTab: string) => Promise<boolean>) | undefined>;
 }
@@ -40,7 +40,7 @@ function Settings({
 }: SettingsProps) {
   const [configSaving, setConfigSaving] = useState(false);
   const [colorTheme, setColorTheme] = useState<"Light" | "Dark" | "System">("System");
-  const themeInAppConfig = useMemo(() => config?.color_theme, [config]);
+  const themeInAppConfig = useMemo(() => config.color_theme, [config]);
   const [configPath, setConfigPath] = useState<string>("");
   const [configPathLoading, setConfigPathLoading] = useState(false);
   const [hasCopied, setHasCopied] = useState(false);
@@ -101,8 +101,6 @@ function Settings({
   }
 
   const handleSaveTheme = async () => {
-    if (!config) return;
-
     try {
       setConfigSaving(true);
 
@@ -135,7 +133,6 @@ function Settings({
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = useCallback(() => {
-    if (!config) return false;
     return colorTheme !== themeInAppConfig;
   }, [colorTheme, config]);
 
@@ -206,10 +203,7 @@ function Settings({
 
   // Initialize theme from config
   useEffect(() => {
-    if (!config) return;
-
     setColorTheme(config.color_theme);
-
   }, [config]);
 
   // Theme options with icons

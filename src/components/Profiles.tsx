@@ -21,7 +21,7 @@ import { useDebounce } from "use-debounce";
 
 interface ProfilesProps {
   onCurrentProfileChanged?: () => void;
-  config: AppConfig | null;
+  config: AppConfig;
   configLoading: boolean;
   saveConfig: (config: AppConfig) => Promise<void>;
 }
@@ -40,12 +40,10 @@ function Profiles({
   } | null>(null);
 
   const isCurrentProfile = useCallback((profileName: string) => {
-    return config?.current_profile === profileName;
+    return config.current_profile === profileName;
   }, [config]);
 
   const handleActivateProfile = async (profileName: string) => {
-    if (!config) return;
-
     setLoading(true);
 
     // Update config with new active profile
@@ -68,8 +66,8 @@ function Profiles({
 
   const handleCreateProfile = () => {
     // Create an empty profile template
-    let [prefix, postfix] = ["Profile", config?.profiles.length ?? 0 + 1];
-    while (config?.profiles.some(p => p.name === `${prefix} ${postfix}`)) {
+    let [prefix, postfix] = ["Profile", config.profiles.length + 1];
+    while (config.profiles.some(p => p.name === `${prefix} ${postfix}`)) {
       postfix++;
     }
 
@@ -87,7 +85,7 @@ function Profiles({
   };
 
   const confirmDeleteProfile = async () => {
-    if (!config || !selectedProfile) return;
+    if (!selectedProfile) return;
 
     try {
       setLoading(true);
@@ -135,8 +133,6 @@ function Profiles({
   };
 
   const saveProfile = async (profile: Profile) => {
-    if (!config) return;
-
     try {
       setLoading(true);
 
@@ -204,7 +200,7 @@ function Profiles({
         {/* Profile list */}
         <Box mt={4}>
           <VStack gap={3} align="stretch">
-            {config?.profiles.map((profile) => (
+            {config.profiles.map((profile) => (
               <Box
                 key={profile.name}
                 p={4}
@@ -309,7 +305,7 @@ function Profiles({
                   <Text>
                     Are you sure you want to delete the profile "{selectedProfile.profile.name}"?
                   </Text>
-                  {config?.current_profile === selectedProfile.profile.name && (
+                  {config.current_profile === selectedProfile.profile.name && (
                     <Text color="red.solid">
                       Warning: This is your active profile. Deleting it will connect you to another available profile.
                     </Text>

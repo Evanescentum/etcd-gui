@@ -151,7 +151,7 @@ async fn save_path_history(
     path: String,
     profile_name: String,
     app_handle: tauri::AppHandle,
-) -> Result<(), String> {
+) -> Result<Vec<String>, String> {
     let history_path = get_history_file_path(&app_handle)?;
 
     // Read existing history map
@@ -172,6 +172,8 @@ async fn save_path_history(
         history.pop();
     }
 
+    let res = history.clone();
+
     // Write back to file
     let mut file = OpenOptions::new()
         .write(true)
@@ -186,7 +188,7 @@ async fn save_path_history(
     file.write_all(content.as_bytes())
         .map_err(|e| format!("Failed to write history: {e}"))?;
 
-    Ok(())
+    Ok(res)
 }
 
 #[tauri::command]

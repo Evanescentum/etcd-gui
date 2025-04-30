@@ -161,9 +161,9 @@ export async function testConnection(profile: Profile): Promise<string> {
  * @param path The path to save
  * @param profileName The current profile name
  */
-export async function savePathToHistory(path: string, profileName: string): Promise<void> {
+export async function savePathToHistory(path: string, profileName: string): Promise<string[]> {
     try {
-        await invoke<void>('save_path_history', { path, profileName });
+        return await invoke<string[]>('save_path_history', { path, profileName });
     } catch (error) {
         console.error('Error saving path to history:', error);
         throw error;

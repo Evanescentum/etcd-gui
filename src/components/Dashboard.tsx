@@ -61,16 +61,16 @@ const TableRowTooltip = ({
 };
 
 interface DashboardProps {
-  appInitializing: boolean;
-  appConfig: AppConfig | null;
+  configLoading: boolean;
+  appConfig: AppConfig;
   shouldRefresh?: boolean;
   onRefreshComplete?: () => void;
 }
 
-function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefreshComplete }: DashboardProps) {
+function Dashboard({ configLoading, appConfig, shouldRefresh = false, onRefreshComplete }: DashboardProps) {
   // Data state
   const [tableData, setTableData] = useState<Array<{ key: string, value: string }>>([]);
-  const [loading, setLoading] = useState(appInitializing);
+  const [loading, setLoading] = useState(configLoading);
   // Add delayed loading state to prevent UI flashing for quick operations
   const [delayedLoading] = useDebounce(loading, 800);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -78,15 +78,16 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   // UI state
   const [keyPrefix, setKeyPrefix] = useState("/");
   const [searchQuery, setSearchQuery] = useState("");
-  
+
   // Path history state
   const [pathHistory, setPathHistory] = useState<string[]>([]);
+  const pathHistoryFilteredByPrefix = useMemo(() => {
+    return pathHistory.filter(path => path.startsWith(keyPrefix));
+  }, [pathHistory, keyPrefix]);
   const [showPathSuggestions, setShowPathSuggestions] = useState(false);
   const pathInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  
-  // Get current profile name - needed for path history
-  const currentProfileName = appConfig?.current_profile || "default";
+  const currentProfileName = useMemo(() => appConfig.current_profile || "default", [appConfig]);
 
   // Close dropdown when clicking outside - implement manually since we can't import useOutsideClick
   useEffect(() => {
@@ -124,17 +125,14 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   // Load path history
   useEffect(() => {
     async function loadPathHistory() {
-      if (!currentProfileName) return;
-      
       try {
-        const history = await getPathHistory(currentProfileName);
-        setPathHistory(history);
+        setPathHistory(await getPathHistory(currentProfileName));
       } catch (error) {
         console.error('Failed to load path history:', error);
       }
     }
     loadPathHistory();
-  }, []);
+  }, [currentProfileName]);
 
   // Load etcd data function
   async function loadEtcdData() {
@@ -142,14 +140,8 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
     setLoadError(null);
 
     try {
-      const items = await fetchEtcdItems(keyPrefix);
-      setTableData(items);
-      
-      // Refresh path history
-      if (currentProfileName) {
-        const history = await getPathHistory(currentProfileName);
-        setPathHistory(history);
-      }
+      setTableData((await fetchEtcdItems(keyPrefix)));
+      setPathHistory(await getPathHistory(currentProfileName));
     } catch (error) {
       console.error('Failed to load etcd data:', error);
       setLoadError(error as string);
@@ -163,23 +155,12 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
       setLoading(false);
     }
   }
-  
+
   // Handle manual refresh when Enter key is pressed or refresh button is clicked
   const handleManualRefresh = async () => {
-    if (!currentProfileName) {
-      toaster.create({
-        title: "No Profile Selected",
-        description: "Please select a profile before querying etcd.",
-        type: "warning",
-      });
-      return;
-    }
-    
     try {
-      // Save path to history before loading data
-      await savePathToHistory(keyPrefix, currentProfileName);
-      // Then load data
       await loadEtcdData();
+      if (keyPrefix !== "") setPathHistory(await savePathToHistory(keyPrefix, currentProfileName));
     } catch (error) {
       console.error('Error during manual refresh:', error);
     }
@@ -212,12 +193,10 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
   const handleSelectPath = async (path: string) => {
     setKeyPrefix(path);
     setShowPathSuggestions(false);
-    
-    if (currentProfileName) {
-      // Save selected path to history (move to top of list)
-      await savePathToHistory(path, currentProfileName);
-    }
-    
+
+    // Save selected path to history
+    setPathHistory(await savePathToHistory(path, currentProfileName));
+
     // Load data for the selected path
     await loadEtcdData();
   };
@@ -249,11 +228,10 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
           <Spacer />
         </Flex>
 
-        {/* Main content */}
         {/* Toolbar */}
         <Box p={4} borderBottomWidth="1px">
           <VStack gap={4}>
-            {/* Path navigation with history dropdown and refresh button */}
+            {/* Path navigation and refresh button */}
             <Flex width="full" align="center" gap={2} position="relative">
               <Box borderWidth="1px" borderRadius="md" p={2}>
                 <LuFolder />
@@ -276,7 +254,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                     flex="1"
                   />
                 </InputGroup>
-                
+
                 {pathHistory.length > 0 && (
                   <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)" zIndex={2}>
                     <Tooltip content="Show history" showArrow>
@@ -292,7 +270,7 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                 )}
 
                 {/* Path suggestions dropdown */}
-                {showPathSuggestions && pathHistory.length > 0 && (
+                {showPathSuggestions && pathHistoryFilteredByPrefix.length > 0 && (
                   <Box
                     position="absolute"
                     top="100%"
@@ -300,20 +278,19 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                     right={0}
                     mt={1}
                     zIndex={10}
-                    bg="white"
-                    borderWidth="1px"
+                    bg="bg.panel"
+                    borderWidth="thin"
                     borderRadius="md"
                     boxShadow="md"
-                    _dark={{ bg: "gray.700" }}
-                    maxH="200px"
+                    maxH="10rem"
                     overflowY="auto"
                   >
-                    {pathHistory.map((path, index) => (
+                    {pathHistoryFilteredByPrefix.map((path, index) => (
                       <Box
                         key={index}
                         p={2}
                         cursor="pointer"
-                        _hover={{ bg: "blackAlpha.50", _dark: { bg: "whiteAlpha.50" } }}
+                        _hover={{ bg: "bg.solid" }}
                         onClick={() => handleSelectPath(path)}
                         fontFamily="mono"
                         fontSize="sm"
@@ -324,16 +301,10 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                   </Box>
                 )}
               </Box>
-              
-              <Tooltip content="Refresh key list" showArrow>
-                <IconButton
-                  aria-label="Refresh"
-                  children={<LuRefreshCw />}
-                  onClick={handleManualRefresh}
-                  loading={loading}
-                  size="sm"
-                />
-              </Tooltip>
+
+              <Button onClick={handleManualRefresh} loading={loading} width="7rem">
+                <LuRefreshCw />Refresh
+              </Button>
             </Flex>
 
             {/* Search and actions */}
@@ -356,15 +327,10 @@ function Dashboard({ appInitializing, appConfig, shouldRefresh = false, onRefres
                 </InputGroup>
               </Flex>
 
-              <Tooltip content="Add new key" showArrow>
-                <Button
-                  onClick={() => setDialogState({ action: "add", key: "", value: "" })}
-                  colorScheme="blue"
-                >
-                  <LuPlus />
-                  Add
-                </Button>
-              </Tooltip>
+              <Button onClick={() => setDialogState({ action: "add", key: "", value: "" })} width="7rem">
+                <LuPlus />
+                Add
+              </Button>
             </Flex>
           </VStack>
         </Box>
