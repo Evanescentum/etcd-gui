@@ -147,6 +147,18 @@ async fn open_config_file(app_handle: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn open_config_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // Get the config file path
+    let path = config::AppConfig::get_config_path(&app_handle)?;
+
+    // Get the parent directory
+    let folder_path = path.parent().ok_or("Failed to get config folder path")?;
+
+    // Open the folder with the default application
+    open::that(folder_path).map_err(|e| format!("Failed to open config folder: {}", e))
+}
+
+#[tauri::command]
 async fn save_path_history(
     path: String,
     profile_name: String,
@@ -249,6 +261,7 @@ pub fn run() {
             config_file_exists,
             config_file_path,
             open_config_file,
+            open_config_folder,
             save_path_history,
             get_path_history
         ])

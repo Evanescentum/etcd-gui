@@ -148,6 +148,18 @@ export async function openConfigFile(): Promise<void> {
 }
 
 /**
+ * Open the configuration folder in the default file explorer
+ */
+export async function openConfigFolder(): Promise<void> {
+    try {
+        await invoke<void>('open_config_folder');
+    } catch (error) {
+        console.error('Error opening config folder:', error);
+        throw error;
+    }
+}
+
+/**
  * Test connection to etcd server with provided profile
  * @param profile The profile to test connection with
  * @returns Etcd server version

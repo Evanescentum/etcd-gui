@@ -17,9 +17,9 @@ import {
 } from "@chakra-ui/react";
 import { useColorMode } from "../components/ui/color-mode";
 import type { AppConfig } from "../api/etcd";
-import { getConfigFilePath, openConfigFile } from "../api/etcd";
+import { getConfigFilePath, openConfigFile, openConfigFolder } from "../api/etcd";
 import { toaster } from "./ui/toaster";
-import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink } from "react-icons/lu";
+import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen } from "react-icons/lu";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Tooltip } from "./ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -86,6 +86,20 @@ function Settings({
       toaster.create({
         title: "Error",
         description: "Failed to open configuration file",
+        type: "error",
+        meta: { closable: true },
+      });
+    }
+  };
+
+  // Handle opening config folder
+  const handleOpenConfigFolder = async () => {
+    try {
+      await openConfigFolder();
+    } catch (error) {
+      toaster.create({
+        title: "Error",
+        description: "Failed to open configuration folder",
         type: "error",
         meta: { closable: true },
       });
@@ -257,6 +271,15 @@ function Settings({
                     onClick={handleOpenConfigFile}
                   >
                     <LuExternalLink />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip content="Open config folder" showArrow>
+                  <IconButton
+                    aria-label="Open config folder"
+                    size="sm"
+                    onClick={handleOpenConfigFolder}
+                  >
+                    <LuFolderOpen />
                   </IconButton>
                 </Tooltip>
               </Flex>
