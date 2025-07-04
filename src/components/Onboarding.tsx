@@ -185,8 +185,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
         title: "Failed to save config",
         description: error as string,
         type: "error",
-        meta: { closable: true },
-        placement: "bottom-end"
+        meta: { closable: true }
       });
     }
   };

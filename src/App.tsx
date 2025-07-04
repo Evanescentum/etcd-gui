@@ -33,7 +33,7 @@ function App() {
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Keep only the tab change check ref
-  const checkBeforeTabChangeRef = useRef<(newTab: string) => Promise<boolean>>();
+  const checkBeforeTabChangeRef = useRef<(newTab: string) => Promise<boolean>>(null);
 
   // Add centralized config state
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);

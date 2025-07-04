@@ -1,5 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
-import { MutableRefObject } from "react";
+import { useState, useEffect, useCallback, useMemo, RefObject } from "react";
 import {
   Box,
   Button,
@@ -30,7 +29,7 @@ const webviewWindow = getCurrentWebviewWindow();
 interface SettingsProps {
   config: AppConfig;
   saveConfig: (config: AppConfig) => Promise<void>;
-  onBeforeTabChange?: MutableRefObject<((newTab: string) => Promise<boolean>) | undefined>;
+  onBeforeTabChange?: RefObject<((newTab: string) => Promise<boolean>) | null>;
 }
 
 function Settings({
