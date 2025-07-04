@@ -159,6 +159,19 @@ async fn open_config_folder(app_handle: tauri::AppHandle) -> Result<(), String> 
 }
 
 #[tauri::command]
+async fn open_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // Get the main webview window
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or("Failed to get main webview window")?;
+
+    // Open the developer tools
+    window.open_devtools();
+
+    Ok(())
+}
+
+#[tauri::command]
 async fn save_path_history(
     path: String,
     profile_name: String,
@@ -262,6 +275,7 @@ pub fn run() {
             config_file_path,
             open_config_file,
             open_config_folder,
+            open_devtools,
             save_path_history,
             get_path_history
         ])

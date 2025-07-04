@@ -195,3 +195,15 @@ export async function getPathHistory(profileName: string): Promise<string[]> {
         throw error;
     }
 }
+
+/**
+ * Open the webview developer tools/console
+ */
+export async function openDevtools(): Promise<void> {
+    try {
+        return await invoke<void>('open_devtools');
+    } catch (error) {
+        console.error('Error opening developer tools:', error);
+        throw error;
+    }
+}

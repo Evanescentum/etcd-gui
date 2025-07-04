@@ -17,9 +17,9 @@ import {
 } from "@chakra-ui/react";
 import { useColorMode } from "../components/ui/color-mode";
 import type { AppConfig } from "../api/etcd";
-import { getConfigFilePath, openConfigFile, openConfigFolder } from "../api/etcd";
+import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools } from "../api/etcd";
 import { toaster } from "./ui/toaster";
-import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen } from "react-icons/lu";
+import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug } from "react-icons/lu";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Tooltip } from "./ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
@@ -100,6 +100,20 @@ function Settings({
       toaster.create({
         title: "Error",
         description: "Failed to open configuration folder",
+        type: "error",
+        meta: { closable: true },
+      });
+    }
+  };
+
+  // Handle opening developer tools
+  const handleOpenDevtools = async () => {
+    try {
+      await openDevtools();
+    } catch (error) {
+      toaster.create({
+        title: "Error",
+        description: "Failed to open developer tools",
         type: "error",
         meta: { closable: true },
       });
@@ -291,7 +305,7 @@ function Settings({
               <Heading size="md">Appearance</Heading>
               <Separator />
 
-              <Box>
+              <Box fontSize="sm">
                 <Text fontWeight="medium" mb={2}>
                   Color Theme
                 </Text>
@@ -318,6 +332,28 @@ function Settings({
                 Save Changes
               </Button>
             </Card.Footer>
+          </Card.Root>
+
+          {/* Developer Tools card */}
+          <Card.Root>
+            <Card.Body>
+              <Heading size="sm" mb={2}>Developer Tools</Heading>
+              <Text fontSize="sm" color="fg.muted" mb={3}>
+                Access developer tools for debugging and troubleshooting
+              </Text>
+              <Flex alignItems="center" gap={2}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleOpenDevtools}
+                >
+                  <HStack>
+                    <LuBug />
+                    <Text>Open Console</Text>
+                  </HStack>
+                </Button>
+              </Flex>
+            </Card.Body>
           </Card.Root>
         </VStack>
       </Box>
