@@ -36,7 +36,8 @@ function Profiles({
   [loading] = useDebounce(loading, 200);
   const [selectedProfile, setSelectedProfile] = useState<{
     profile: Profile,
-    usedFor: "create" | "edit" | "delete"
+    usedFor: "create" | "edit" | "delete",
+    originalName?: string  // Track original name for edits
   } | null>(null);
 
   const isCurrentProfile = useCallback((profileName: string) => {
@@ -133,29 +134,33 @@ function Profiles({
   };
 
   const saveProfile = async (profile: Profile) => {
+    if (!config || !selectedProfile) return;
+
     try {
       setLoading(true);
 
-      let updatedProfiles: Profile[];
-      const existingIndex = config.profiles.findIndex(p => p.name === profile.name);
-
-      if (existingIndex >= 0) {
-        // Update existing profile
-        updatedProfiles = [...config.profiles];
-        updatedProfiles[existingIndex] = profile;
-      } else {
-        // Add new profile
-        updatedProfiles = [...config.profiles, profile];
+      let newConfig: AppConfig = {
+        color_theme: config.color_theme,
+        current_profile: config.current_profile,
+        profiles: config.profiles
       }
 
-      const updatedConfig = {
-        ...config,
-        profiles: updatedProfiles,
-      };
+      // Find existing profiles that should be updated, or -1 if new profile should be added
+      const existingIndex = config.profiles.findIndex(p => p.name === (selectedProfile.originalName ?? profile.name));
+      if (existingIndex >= 0) {
+        newConfig.profiles[existingIndex] = profile;
+      } else {
+        newConfig.profiles.push(profile);
+      }
 
-      await saveConfig(updatedConfig);
+      // If we're editing the active profile and its name changed, update current_profile to match
+      if (selectedProfile.originalName === config.current_profile && selectedProfile.originalName !== profile.name) {
+        newConfig.current_profile = profile.name;
+      }
 
-      if (profile.name === config.current_profile) {
+      await saveConfig(newConfig);
+
+      if (selectedProfile.originalName === config.current_profile) {
         await initializeEtcdClient();
       }
 
@@ -256,7 +261,9 @@ function Profiles({
                         children={<TbEdit />}
                         size="sm"
                         variant="ghost"
-                        onClick={() => { setSelectedProfile({ profile: profile, usedFor: "edit" }); }}
+                        onClick={() => {
+                          setSelectedProfile({ profile: profile, usedFor: "edit", originalName: profile.name });
+                        }}
                       />
                     </Tooltip>
 
