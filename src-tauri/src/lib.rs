@@ -12,19 +12,14 @@ use std::path::PathBuf;
 use tauri::{Manager, State};
 use tokio::sync::Mutex;
 
-// Initialize the etcd client when the application starts.
-//
-// Empty string is returned if no profile is found.
+/// Initialize the etcd client managed by the application state.
+///
+/// Returns false if the ```current_profile``` is not pointinng to a valid profile,
+/// otherwise returns true.
 #[tauri::command]
-async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<String, String> {
+async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
     let _ = state.lock().await.etcd_client.take(); // Reset the client if it exists
-    state.lock().await.init_client().await.map(|has_profile| {
-        if has_profile {
-            format!("Connected successfully")
-        } else {
-            Default::default()
-        }
-    })
+    state.lock().await.init_client().await
 }
 
 #[tauri::command]

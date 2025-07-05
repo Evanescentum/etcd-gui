@@ -29,11 +29,13 @@ function App() {
 
   // Add state for active tab
   const [activeTab, setActiveTab] = useState("dashboard");
-  const [shouldRefreshDashboard, setShouldRefreshDashboard] = useState(true);
   const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Keep only the tab change check ref
   const checkBeforeTabChangeRef = useRef<(newTab: string) => Promise<boolean>>(null);
+
+  // Dashboard refresh function ref
+  const dashboardRefreshRef = useRef<(() => void) | undefined>(undefined);
 
   // Add centralized config state
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
@@ -102,19 +104,12 @@ function App() {
         const result = await initializeEtcdClient();
 
         // If result is empty string, switch to profiles tab
-        if (result === "") {
+        if (!result) {
           setActiveTab("profiles");
           toaster.create({
             title: "No active profile",
             description: "Please configure a connection profile to get started.",
             type: "info",
-            closable: true,
-          });
-        } else if (result) {
-          toaster.create({
-            title: "Connection established",
-            description: result,
-            type: "success",
             closable: true,
           });
         }
@@ -283,13 +278,15 @@ function App() {
           <Dashboard
             configLoading={configLoading}
             appConfig={appConfig}
-            shouldRefresh={shouldRefreshDashboard}
-            onRefreshComplete={() => setShouldRefreshDashboard(false)}
+            onRegisterRefresh={(refreshFn) => {
+              refreshFn(); // Initial load
+              dashboardRefreshRef.current = refreshFn;
+            }}
           />
         </Tabs.Content>
         <Tabs.Content value="profiles" paddingX={2} width="100%" height="100%">
           <Profiles
-            onCurrentProfileChanged={() => setShouldRefreshDashboard(true)}
+            onCurrentProfileChanged={dashboardRefreshRef.current}
             config={appConfig}
             configLoading={configLoading}
             saveConfig={saveConfig}

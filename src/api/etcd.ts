@@ -32,9 +32,9 @@ export interface Profile {
 /**
  * Connect to an etcd cluster with the specified connection info
  */
-export async function initializeEtcdClient(): Promise<string> {
+export async function initializeEtcdClient(): Promise<boolean> {
     try {
-        return await invoke<string>('initialize_etcd_client');
+        return await invoke<boolean>('initialize_etcd_client');
     } catch (error) {
         console.error('Error connecting to etcd:', error);
         throw error;

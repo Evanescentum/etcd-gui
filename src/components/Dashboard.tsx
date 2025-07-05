@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import {
   Box,
   ButtonGroup,
@@ -63,11 +63,10 @@ const TableRowTooltip = ({
 interface DashboardProps {
   configLoading: boolean;
   appConfig: AppConfig;
-  shouldRefresh?: boolean;
-  onRefreshComplete?: () => void;
+  onRegisterRefresh: (refreshFn: () => void) => void;
 }
 
-function Dashboard({ configLoading, appConfig, shouldRefresh = false, onRefreshComplete }: DashboardProps) {
+function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardProps) {
   // Data state
   const [tableData, setTableData] = useState<Array<{ key: string, value: string }>>([]);
   const [loading, setLoading] = useState(configLoading);
@@ -135,7 +134,7 @@ function Dashboard({ configLoading, appConfig, shouldRefresh = false, onRefreshC
   }, [currentProfileName]);
 
   // Load etcd data function
-  async function loadEtcdData() {
+  const loadEtcdData = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
 
@@ -154,7 +153,7 @@ function Dashboard({ configLoading, appConfig, shouldRefresh = false, onRefreshC
     } finally {
       setLoading(false);
     }
-  }
+  }, [keyPrefix, currentProfileName]);
 
   // Handle manual refresh when Enter key is pressed or refresh button is clicked
   const handleManualRefresh = async () => {
@@ -166,16 +165,17 @@ function Dashboard({ configLoading, appConfig, shouldRefresh = false, onRefreshC
     }
   };
 
-  // Effect to handle force refresh from parent
+  // Create refresh function for parent component to call
+  const refreshFn = useCallback(async () => {
+    setTableData([]);
+    await initializeEtcdClient();
+    await loadEtcdData();
+  }, [loadEtcdData]);
+
+  // Pass refresh function to parent component
   useEffect(() => {
-    if (shouldRefresh) {
-      setTableData([]);
-      initializeEtcdClient();
-      loadEtcdData();
-      // Notify parent that refresh is complete
-      onRefreshComplete?.();
-    }
-  }, [shouldRefresh]);
+    onRegisterRefresh(refreshFn);
+  }, [refreshFn, onRegisterRefresh]);
 
   // Filter and paginate data
   const filteredData = useMemo(() => {
