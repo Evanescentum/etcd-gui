@@ -42,7 +42,7 @@ function AddKeyDialog({
             toaster.create({
                 title: "Key added successfully",
                 description: `Key: ${dialogNewKey}`,
-                meta: { closable: true },
+                closable: true,
                 type: "success",
             });
 
@@ -57,7 +57,7 @@ function AddKeyDialog({
             toaster.create({
                 title: "Error adding key",
                 description: error as string,
-                meta: { closable: true },
+                closable: true,
                 type: "error",
             });
         } finally {

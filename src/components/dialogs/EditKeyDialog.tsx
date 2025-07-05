@@ -50,7 +50,7 @@ function EditKeyDialog({
             toaster.create({
                 title: "Key updated successfully",
                 description: `Key: ${dialogKey}`,
-                meta: { closable: true },
+                closable: true,
                 type: "success",
             });
 
@@ -61,7 +61,7 @@ function EditKeyDialog({
             toaster.create({
                 title: "Error updating key",
                 description: error as string,
-                meta: { closable: true },
+                closable: true,
                 type: "error",
             });
         } finally {

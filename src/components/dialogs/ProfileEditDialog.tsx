@@ -129,7 +129,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                 title: "Connection Test",
                 description: `Successfully connected to ${editedProfile.name}. Server version: ${version}`,
                 type: "success",
-                meta: { closable: true },
+                closable: true,
             });
         } catch (error) {
             // Show error message
@@ -137,7 +137,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                 title: "Connection Test Failed",
                 description: typeof error === "string" ? error : "Unknown error",
                 type: "error",
-                meta: { closable: true },
+                closable: true,
             });
         } finally {
             setTestingConnection(false);

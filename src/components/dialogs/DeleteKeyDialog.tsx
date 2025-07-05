@@ -41,7 +41,7 @@ function DeleteKeyDialog({
             toaster.create({
                 title: "Key deleted successfully",
                 description: `Key: ${keyToDelete}`,
-                meta: { closable: true },
+                closable: true,
                 type: "success",
             });
 
@@ -52,7 +52,7 @@ function DeleteKeyDialog({
             toaster.create({
                 title: "Error deleting key",
                 description: error as string,
-                meta: { closable: true },
+                closable: true,
                 type: "error",
             });
         } finally {

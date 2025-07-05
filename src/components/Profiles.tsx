@@ -116,7 +116,7 @@ function Profiles({
         title: "Profile Deleted",
         description: `Profile ${selectedProfile?.profile.name} has been deleted`,
         type: "success",
-        meta: { closable: true },
+        closable: true,
       });
 
       setSelectedProfile(null);
@@ -126,7 +126,7 @@ function Profiles({
         title: "Error",
         description: "Failed to delete profile",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
     } finally {
       setLoading(false);
@@ -168,7 +168,7 @@ function Profiles({
         title: existingIndex >= 0 ? "Profile Updated" : "Profile Created",
         description: `Profile ${profile.name} has been ${existingIndex >= 0 ? 'updated' : 'created'}`,
         type: "success",
-        meta: { closable: true },
+        closable: true,
       });
 
       setSelectedProfile(null);
@@ -178,7 +178,7 @@ function Profiles({
         title: "Error",
         description: "Failed to save profile",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
     } finally {
       setLoading(false);

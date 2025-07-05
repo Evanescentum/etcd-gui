@@ -76,7 +76,7 @@ function App() {
         title: "Configuration Error",
         description: "Failed to save application configuration",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
       throw error;
     } finally {
@@ -108,14 +108,14 @@ function App() {
             title: "No active profile",
             description: "Please configure a connection profile to get started.",
             type: "info",
-            meta: { closable: true },
+            closable: true,
           });
         } else if (result) {
           toaster.create({
             title: "Connection established",
             description: result,
             type: "success",
-            meta: { closable: true },
+            closable: true,
           });
         }
       } catch (error) {
@@ -124,7 +124,7 @@ function App() {
           title: "Connection Error",
           description: error as string,
           type: "error",
-          meta: { closable: true },
+          closable: true,
         });
       }
     };
@@ -165,7 +165,7 @@ function App() {
           title: "Ready to go!",
           description: "Your connection profile has been created and connected successfully.",
           type: "success",
-          meta: { closable: true },
+          closable: true,
         });
       }
     } catch (error) {
@@ -174,7 +174,7 @@ function App() {
         title: "Connection Error",
         description: "Profile created but couldn't connect. Please check your settings.",
         type: "warning",
-        meta: { closable: true },
+        closable: true,
       });
       setActiveTab("profiles");
     }

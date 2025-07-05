@@ -86,7 +86,7 @@ function Settings({
         title: "Error",
         description: "Failed to open configuration file",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
     }
   };
@@ -100,7 +100,7 @@ function Settings({
         title: "Error",
         description: "Failed to open configuration folder",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
     }
   };
@@ -114,7 +114,7 @@ function Settings({
         title: "Error",
         description: "Failed to open developer tools",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
     }
   };
@@ -143,7 +143,7 @@ function Settings({
         title: "Settings saved",
         description: "Your theme preference has been updated",
         type: "success",
-        meta: { closable: true },
+        closable: true,
       });
     } catch (error) {
       console.error("Failed to save settings:", error);
@@ -151,7 +151,7 @@ function Settings({
         title: "Error",
         description: "Failed to save settings",
         type: "error",
-        meta: { closable: true },
+        closable: true,
       });
     } finally {
       setConfigSaving(false);

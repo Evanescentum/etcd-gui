@@ -148,7 +148,7 @@ function Dashboard({ configLoading, appConfig, shouldRefresh = false, onRefreshC
       toaster.create({
         title: "Connection Error",
         description: `Could not connect to etcd database: ${error}`,
-        meta: { closable: true },
+        closable: true,
         type: "error",
       });
     } finally {
