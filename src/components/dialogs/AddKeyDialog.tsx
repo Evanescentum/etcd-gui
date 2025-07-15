@@ -1,69 +1,33 @@
 import { useState, ChangeEvent } from "react";
-import {
-    Button,
-    CloseButton,
-    Dialog,
-    Field,
-    Input,
-    Textarea,
-    VStack,
-} from "@chakra-ui/react";
 import { putEtcdItem } from "../../api/etcd";
-import { toaster } from "../../components/ui/toaster";
+import { Button, CloseButton, Dialog, Field, Input, Textarea, VStack } from "@chakra-ui/react";
+
 import { HiX } from "react-icons/hi";
+import { useMutation } from "@tanstack/react-query";
+import { toaster } from "../ui/toaster";
+
 
 interface AddKeyDialogProps {
     defaultKeyPrefix: string;
-    onSuccess: () => void;
-    onCancel: () => void;
-    loading: boolean;
-    setLoading: (loading: boolean) => void;
+    onClose: () => void;
+    refetch: () => void;
 }
 
 function AddKeyDialog({
     defaultKeyPrefix,
-    onSuccess,
-    onCancel,
-    loading,
-    setLoading
+    onClose,
+    refetch
 }: AddKeyDialogProps) {
-    // Dialog state
     const [dialogNewKey, setDialogNewKey] = useState(defaultKeyPrefix);
     const [dialogNewValue, setDialogNewValue] = useState("");
-
-    const handleAddConfirm = async () => {
-        if (!dialogNewKey.trim() || !dialogNewValue.trim()) return;
-
-        try {
-            setLoading(true); // Show loading state
-            await putEtcdItem(dialogNewKey, dialogNewValue);
-
-            // Show success notification
-            toaster.create({
-                title: "Key added successfully",
-                description: `Key: ${dialogNewKey}`,
-                closable: true,
-                type: "success",
-            });
-
-            // Close the dialog and refresh the parent component
-            onSuccess();
-
-            // Reset the form
-            setDialogNewKey("");
-            setDialogNewValue("");
-        } catch (error) {
-            console.error("Failed to add key:", error);
-            toaster.create({
-                title: "Error adding key",
-                description: error as string,
-                closable: true,
-                type: "error",
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
+        mutationFn: async ({ key, value }) => await putEtcdItem(key, value),
+        onSuccess: () => refetch(),
+        onError: (error: String) => {
+            console.error("Failed to add etcd item:", error);
+            toaster.create({ type: "error", title: "Add Key Failed", description: error, closable: true });
+        },
+    });
 
     return (
         <Dialog.Root modal={true} open={true}>
@@ -77,7 +41,7 @@ function AddKeyDialog({
                             right={4}
                             top={4}
                             size="sm"
-                            onClick={onCancel}
+                            onClick={onClose}
                         ><HiX /></CloseButton>
                     </Dialog.Header>
                     <Dialog.Body>
@@ -98,7 +62,6 @@ function AddKeyDialog({
                                 <Field.Label>
                                     Value <Field.RequiredIndicator />
                                 </Field.Label>
-                                {/* Using a controlled textarea with proper event handling */}
                                 <Textarea
                                     placeholder="Enter value (string, JSON, etc.)"
                                     autoresize
@@ -111,16 +74,13 @@ function AddKeyDialog({
                     </Dialog.Body>
 
                     <Dialog.Footer>
-                        <Button variant="outline" mr={3} onClick={onCancel}>
+                        <Button variant="outline" mr={3} onClick={onClose}>
                             Cancel
                         </Button>
-                        <Button
-                            colorScheme="blue"
-                            onClick={handleAddConfirm}
-                            disabled={!dialogNewKey.trim() || !dialogNewValue.trim() || loading}
-                            loading={loading}
-                        >
-                            Add Key
+                        <Button colorScheme="blue"
+                            onClick={() => mutateAsync({ key: dialogNewKey, value: dialogNewValue }).then(onClose)}
+                            loading={isPending} disabled={!dialogNewKey.trim() || !dialogNewValue.trim() || isPending}>
+                            Add
                         </Button>
                     </Dialog.Footer>
                 </Dialog.Content>

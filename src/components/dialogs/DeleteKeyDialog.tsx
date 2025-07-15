@@ -7,58 +7,33 @@ import {
     VStack,
 } from "@chakra-ui/react";
 import { useColorModeValue } from "../../components/ui/color-mode";
-import { deleteEtcdItem } from "../../api/etcd";
-import { toaster } from "../../components/ui/toaster";
 import { HiX } from "react-icons/hi"
+import { useMutation } from "@tanstack/react-query";
+import { toaster } from "../ui/toaster";
+import { deleteEtcdItem } from "@/api/etcd";
 
 interface DeleteKeyDialogProps {
     keyToDelete: string;
     valueToDelete: string;
-    onSuccess: () => void;
-    onCancel: () => void;
-    loading: boolean;
-    setLoading: (loading: boolean) => void;
+    onClose: () => void;
+    refetch: () => void;
 }
 
 function DeleteKeyDialog({
     keyToDelete,
     valueToDelete,
-    onSuccess,
-    onCancel,
-    loading,
-    setLoading
+    onClose,
+    refetch
 }: DeleteKeyDialogProps) {
     const borderColor = useColorModeValue("gray.200", "gray.700");
 
-    const handleDeleteConfirm = async () => {
-        if (!keyToDelete) return;
-
-        try {
-            setLoading(true); // Show loading state
-            await deleteEtcdItem(keyToDelete);
-
-            // Show success notification
-            toaster.create({
-                title: "Key deleted successfully",
-                description: `Key: ${keyToDelete}`,
-                closable: true,
-                type: "success",
-            });
-
-            // Close the dialog and refresh the parent component
-            onSuccess();
-        } catch (error) {
-            console.error("Failed to delete key:", error);
-            toaster.create({
-                title: "Error deleting key",
-                description: error as string,
-                closable: true,
-                type: "error",
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { mutateAsync, isPending } = useMutation<void, String, { key: string }>({
+        mutationFn: async ({ key }) => await deleteEtcdItem(key),
+        onSuccess: () => refetch(),
+        onError: (error: String) => {
+            toaster.create({ type: "error", title: "Delete Key Failed", description: error, closable: true });
+        },
+    });
 
     return (
         <Dialog.Root modal={true} open={true}>
@@ -72,7 +47,7 @@ function DeleteKeyDialog({
                             size="sm"
                             top={4}
                             right={4}
-                            onClick={onCancel}
+                            onClick={onClose}
                         ><HiX /></CloseButton>
                     </Dialog.Header>
                     <Dialog.Body>
@@ -123,14 +98,15 @@ function DeleteKeyDialog({
                         </VStack>
                     </Dialog.Body>
                     <Dialog.Footer>
-                        <Button variant="outline" mr={3} onClick={onCancel}>
+                        <Button variant="outline" mr={3} onClick={onClose}>
                             Cancel
                         </Button>
                         <Button
                             colorPalette="red"
-                            onClick={handleDeleteConfirm}
-                            loading={loading}
+                            onClick={() => mutateAsync({ key: keyToDelete }).then(onClose)}
+                            loading={isPending}
                             loadingText="Deleting"
+                            disabled={!keyToDelete.trim() || isPending}
                         >
                             Delete
                         </Button>

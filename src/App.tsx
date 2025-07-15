@@ -34,9 +34,6 @@ function App() {
   // Keep only the tab change check ref
   const checkBeforeTabChangeRef = useRef<(newTab: string) => Promise<boolean>>(null);
 
-  // Dashboard refresh function ref
-  const dashboardRefreshRef = useRef<(() => void) | undefined>(undefined);
-
   // Add centralized config state
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
@@ -278,15 +275,10 @@ function App() {
           <Dashboard
             configLoading={configLoading}
             appConfig={appConfig}
-            onRegisterRefresh={(refreshFn) => {
-              refreshFn(); // Initial load
-              dashboardRefreshRef.current = refreshFn;
-            }}
           />
         </Tabs.Content>
         <Tabs.Content value="profiles" paddingX={2} width="100%" height="100%">
           <Profiles
-            onCurrentProfileChanged={dashboardRefreshRef.current}
             config={appConfig}
             configLoading={configLoading}
             saveConfig={saveConfig}

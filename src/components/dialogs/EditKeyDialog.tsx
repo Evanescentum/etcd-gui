@@ -1,73 +1,34 @@
 import { useState, ChangeEvent } from "react";
-import {
-    Button,
-    CloseButton,
-    Dialog,
-    Field,
-    Input,
-    VStack,
-    Text,
-    Box,
-    Textarea,
-} from "@chakra-ui/react";
+import { Button, CloseButton, Dialog, Field, Input, VStack, Box, Textarea, Text } from "@chakra-ui/react";
 import { useColorModeValue } from "../../components/ui/color-mode";
-import { putEtcdItem } from "../../api/etcd";
-import { toaster } from "../../components/ui/toaster";
+import { putEtcdItem } from "@/api/etcd";
 import { HiX } from "react-icons/hi";
+import { toaster } from "../ui/toaster";
+import { useMutation } from "@tanstack/react-query";
 
 interface EditKeyDialogProps {
     keyToEdit: string;
     valueToEdit: string;
-    onSuccess: () => void;
-    onCancel: () => void;
-    loading: boolean;
-    setLoading: (loading: boolean) => void;
+    onClose: () => void;
+    refetch: () => void;
 }
 
 function EditKeyDialog({
     keyToEdit,
     valueToEdit,
-    onSuccess,
-    onCancel,
-    loading,
-    setLoading
+    onClose,
+    refetch
 }: EditKeyDialogProps) {
-    // Dialog state
     const [dialogKey, setDialogKey] = useState(keyToEdit);
     const [dialogValue, setDialogValue] = useState(valueToEdit);
     const [isKeyEditable, setIsKeyEditable] = useState(false);
-
-    const handleEditConfirm = async () => {
-        if (!dialogKey.trim() || !dialogValue.trim()) return;
-
-        try {
-            setLoading(true);
-
-            // Update the key-value pair
-            await putEtcdItem(dialogKey, dialogValue);
-
-            // Show success notification
-            toaster.create({
-                title: "Key updated successfully",
-                description: `Key: ${dialogKey}`,
-                closable: true,
-                type: "success",
-            });
-
-            // Close the dialog and refresh the parent component
-            onSuccess();
-        } catch (error) {
-            console.error("Failed to update key:", error);
-            toaster.create({
-                title: "Error updating key",
-                description: error as string,
-                closable: true,
-                type: "error",
-            });
-        } finally {
-            setLoading(false);
-        }
-    };
+    const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
+        mutationFn: async ({ key, value }) => await putEtcdItem(key, value),
+        onSuccess: () => refetch(),
+        onError: (error: String) => {
+            toaster.create({ type: "error", title: "Edit Key Failed", description: error, closable: true });
+        },
+    });
 
     return (
         <Dialog.Root modal={true} open={true}>
@@ -81,7 +42,7 @@ function EditKeyDialog({
                             right={4}
                             top={4}
                             size="sm"
-                            onClick={onCancel}
+                            onClick={onClose}
                         ><HiX /></CloseButton>
                     </Dialog.Header>
                     <Dialog.Body>
@@ -134,14 +95,14 @@ function EditKeyDialog({
                     </Dialog.Body>
 
                     <Dialog.Footer>
-                        <Button variant="outline" mr={3} onClick={onCancel}>
+                        <Button variant="outline" mr={3} onClick={onClose}>
                             Cancel
                         </Button>
                         <Button
                             colorScheme="blue"
-                            onClick={handleEditConfirm}
-                            disabled={!dialogKey.trim() || !dialogValue.trim() || loading}
-                            loading={loading}
+                            onClick={() => mutateAsync({ key: dialogKey, value: dialogValue }).then(onClose)}
+                            disabled={!dialogKey.trim() || !dialogValue.trim() || isPending}
+                            loading={isPending}
                         >
                             Update
                         </Button>

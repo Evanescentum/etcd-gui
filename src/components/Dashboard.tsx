@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
+import { useEtcdItemsQuery } from "../hooks/useEtcdQuery";
 import {
   Box,
   ButtonGroup,
@@ -25,8 +26,8 @@ import {
 import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
 import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
-import { toaster } from "../components/ui/toaster";
-import { AppConfig, fetchEtcdItems, initializeEtcdClient, savePathToHistory, getPathHistory } from "../api/etcd";
+// import { toaster } from "../components/ui/toaster"; // Removed unused import
+import { AppConfig, savePathToHistory, getPathHistory } from "../api/etcd";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
@@ -63,20 +64,24 @@ const TableRowTooltip = ({
 interface DashboardProps {
   configLoading: boolean;
   appConfig: AppConfig;
-  onRegisterRefresh: (refreshFn: () => void) => void;
 }
 
-function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardProps) {
-  // Data state
-  const [tableData, setTableData] = useState<Array<{ key: string, value: string }>>([]);
-  const [loading, setLoading] = useState(configLoading);
-  // Add delayed loading state to prevent UI flashing for quick operations
-  const [delayedLoading] = useDebounce(loading, 800);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  // UI state
+function Dashboard({ configLoading, appConfig }: DashboardProps) {
+  // 路径和搜索状态，必须在 useQuery 之前声明
   const [keyPrefix, setKeyPrefix] = useState("/");
   const [searchQuery, setSearchQuery] = useState("");
+  const currentProfileName = useMemo(() => appConfig.current_profile ?? null, [appConfig]);
+  // React Query: etcd items
+  const {
+    data: tableData = [],
+    isError,
+    error,
+    refetch,
+    isFetching
+  } = useEtcdItemsQuery({ keyPrefix, currentProfileName, configLoading });
+  // Add delayed loading state to prevent UI flashing for quick operations
+  const [delayedLoading] = useDebounce(isFetching, 800);
+  const loadError = isError ? (typeof error === "string" ? error : (error instanceof Error ? error.message : "Unknown error")) : null;
 
   // Path history state
   const [pathHistory, setPathHistory] = useState<string[]>([]);
@@ -86,7 +91,6 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
   const [showPathSuggestions, setShowPathSuggestions] = useState(false);
   const pathInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const currentProfileName = useMemo(() => appConfig.current_profile || "default", [appConfig]);
 
   // Close dropdown when clicking outside - implement manually since we can't import useOutsideClick
   useEffect(() => {
@@ -125,7 +129,7 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
   useEffect(() => {
     async function loadPathHistory() {
       try {
-        setPathHistory(await getPathHistory(currentProfileName));
+        setPathHistory(await getPathHistory(currentProfileName ?? ""));
       } catch (error) {
         console.error('Failed to load path history:', error);
       }
@@ -133,49 +137,11 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
     loadPathHistory();
   }, [currentProfileName]);
 
-  // Load etcd data function
-  const loadEtcdData = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-
-    try {
-      setTableData((await fetchEtcdItems(keyPrefix)));
-      setPathHistory(await getPathHistory(currentProfileName));
-    } catch (error) {
-      console.error('Failed to load etcd data:', error);
-      setLoadError(error as string);
-      toaster.create({
-        title: "Connection Error",
-        description: `Could not connect to etcd database: ${error}`,
-        closable: true,
-        type: "error",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [keyPrefix, currentProfileName]);
-
-  // Handle manual refresh when Enter key is pressed or refresh button is clicked
+  // Manual refresh
   const handleManualRefresh = async () => {
-    try {
-      await loadEtcdData();
-      if (keyPrefix !== "") setPathHistory(await savePathToHistory(keyPrefix, currentProfileName));
-    } catch (error) {
-      console.error('Error during manual refresh:', error);
-    }
+    await refetch();
+    if (keyPrefix !== "") setPathHistory(await savePathToHistory(keyPrefix, currentProfileName ?? ""));
   };
-
-  // Create refresh function for parent component to call
-  const refreshFn = useCallback(async () => {
-    setTableData([]);
-    await initializeEtcdClient();
-    await loadEtcdData();
-  }, [loadEtcdData]);
-
-  // Pass refresh function to parent component
-  useEffect(() => {
-    onRegisterRefresh(refreshFn);
-  }, [refreshFn, onRegisterRefresh]);
 
   // Filter and paginate data
   const filteredData = useMemo(() => {
@@ -193,12 +159,8 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
   const handleSelectPath = async (path: string) => {
     setKeyPrefix(path);
     setShowPathSuggestions(false);
-
-    // Save selected path to history
-    setPathHistory(await savePathToHistory(path, currentProfileName));
-
-    // Load data for the selected path
-    await loadEtcdData();
+    setPathHistory(await savePathToHistory(path, currentProfileName ?? ""));
+    await refetch();
   };
 
   // Define the end element for search input
@@ -302,7 +264,7 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
                 )}
               </Box>
 
-              <Button onClick={handleManualRefresh} loading={loading} width="7rem">
+              <Button onClick={handleManualRefresh} loading={delayedLoading} width="7rem">
                 <LuRefreshCw />Refresh
               </Button>
             </Flex>
@@ -411,7 +373,7 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
               <Table.Row>
                 <Table.Cell colSpan={3} textAlign="center" py={8}>
                   {loadError ? (
-                    <Text color="red.500">Error loading data: {loadError}</Text>
+                    <Text color="red.500">Error loading data: {String(loadError)}</Text>
                   ) : (
                     <Text>No items found</Text>
                   )}
@@ -521,10 +483,8 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
       {dialogState && dialogState.action === "add" && (
         <AddKeyDialog
           defaultKeyPrefix={keyPrefix}
-          onSuccess={() => { setDialogState(null); loadEtcdData(); }}
-          onCancel={() => setDialogState(null)}
-          loading={loading}
-          setLoading={setLoading}
+          onClose={() => setDialogState(null)}
+          refetch={refetch}
         />
       )}
 
@@ -533,10 +493,8 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
         <EditKeyDialog
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
-          onSuccess={() => { setDialogState(null); loadEtcdData(); }}
-          onCancel={() => setDialogState(null)}
-          loading={loading}
-          setLoading={setLoading}
+          onClose={() => setDialogState(null)}
+          refetch={refetch}
         />
       )}
 
@@ -545,10 +503,8 @@ function Dashboard({ configLoading, appConfig, onRegisterRefresh }: DashboardPro
         <DeleteKeyDialog
           keyToDelete={dialogState.key}
           valueToDelete={dialogState.value}
-          onSuccess={() => { setDialogState(null); loadEtcdData(); }}
-          onCancel={() => setDialogState(null)}
-          loading={loading}
-          setLoading={setLoading}
+          onClose={() => setDialogState(null)}
+          refetch={refetch}
         />
       )}
 

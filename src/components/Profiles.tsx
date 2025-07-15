@@ -18,20 +18,16 @@ import { initializeEtcdClient } from "../api/etcd";
 import type { AppConfig, Profile } from "../api/etcd";
 import ProfileEditDialog from "./dialogs/ProfileEditDialog";
 import { useDebounce } from "use-debounce";
+import { useQueryClient } from "@tanstack/react-query";
 
-interface ProfilesProps {
-  onCurrentProfileChanged?: () => void;
+export interface ProfilesProps {
   config: AppConfig;
   configLoading: boolean;
   saveConfig: (config: AppConfig) => Promise<void>;
 }
 
-function Profiles({
-  onCurrentProfileChanged,
-  config,
-  configLoading,
-  saveConfig,
-}: ProfilesProps) {
+function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
+  const queryClient = useQueryClient();
   let [loading, setLoading] = useState(configLoading);
   [loading] = useDebounce(loading, 200);
   const [selectedProfile, setSelectedProfile] = useState<{
@@ -54,13 +50,8 @@ function Profiles({
     };
 
     await saveConfig(updatedConfig);
-
     // Reconnect to etcd with the new profile
-    initializeEtcdClient();
-
-    // Notify parent component about profile change
-    onCurrentProfileChanged?.();
-
+    await initializeEtcdClient();
     setLoading(false);
 
   };
@@ -107,9 +98,8 @@ function Profiles({
       };
 
       await saveConfig(updatedConfig);
-
       if (current_profile !== config.current_profile) {
-        onCurrentProfileChanged?.()  // Notify parent component about profile change;
+        await initializeEtcdClient();
       }
 
       toaster.create({
@@ -162,6 +152,8 @@ function Profiles({
 
       if (selectedProfile.originalName === config.current_profile) {
         await initializeEtcdClient();
+        // Manually invalidate the cache for the dashboard
+        queryClient.invalidateQueries({ queryKey: ["etcd-items", config.current_profile] });
       }
 
       toaster.create({
