@@ -38,6 +38,37 @@ async fn list_keys(
 }
 
 #[tauri::command]
+async fn list_keys_only(
+    prefix: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<String>, String> {
+    let mut state = state.lock().await;
+    let mut res = core::list_keys_only(&prefix, state.get_client().await?).await;
+    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
+        res = core::list_keys_only(&prefix, state.get_client().await?).await;
+    }
+
+    res.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_values_in_range(
+    start_key: String,
+    end_inclusive: String,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<client::Item>, String> {
+    let mut state = state.lock().await;
+    let mut res =
+        core::get_values_in_range(&start_key, &end_inclusive, state.get_client().await?).await;
+    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
+        res =
+            core::get_values_in_range(&start_key, &end_inclusive, state.get_client().await?).await;
+    }
+
+    res.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn put_key(
     key: String,
     value: String,
@@ -261,6 +292,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             initialize_etcd_client,
             list_keys,
+            list_keys_only,
+            get_values_in_range,
             put_key,
             delete_key,
             get_config,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
-import { useEtcdItemsQuery } from "../hooks/useEtcdQuery";
+import { useEtcdKeysOnlyQuery, useEtcdValuesInRangeQuery } from "../hooks/useEtcdQuery";
 import {
   Box,
   ButtonGroup,
@@ -26,7 +26,6 @@ import {
 import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
 import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
-// import { toaster } from "../components/ui/toaster"; // Removed unused import
 import { AppConfig, savePathToHistory, getPathHistory } from "../api/etcd";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
@@ -67,44 +66,9 @@ interface DashboardProps {
 }
 
 function Dashboard({ configLoading, appConfig }: DashboardProps) {
-  // 路径和搜索状态，必须在 useQuery 之前声明
   const [keyPrefix, setKeyPrefix] = useState("/");
   const [searchQuery, setSearchQuery] = useState("");
-  const currentProfileName = useMemo(() => appConfig.current_profile ?? null, [appConfig]);
-  // React Query: etcd items
-  const {
-    data: tableData = [],
-    isError,
-    error,
-    refetch,
-    isFetching
-  } = useEtcdItemsQuery({ keyPrefix, currentProfileName, configLoading });
-  // Add delayed loading state to prevent UI flashing for quick operations
-  const [delayedLoading] = useDebounce(isFetching, 800);
-  const loadError = isError ? (typeof error === "string" ? error : (error instanceof Error ? error.message : "Unknown error")) : null;
-
-  // Path history state
-  const [pathHistory, setPathHistory] = useState<string[]>([]);
-  const pathHistoryFilteredByPrefix = useMemo(() => {
-    return pathHistory.filter(path => path.startsWith(keyPrefix));
-  }, [pathHistory, keyPrefix]);
-  const [showPathSuggestions, setShowPathSuggestions] = useState(false);
-  const pathInputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside - implement manually since we can't import useOutsideClick
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowPathSuggestions(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [dropdownRef]);
-
+  const currentProfileName = useMemo(() => appConfig.current_profile ?? "default", [appConfig]);
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -117,6 +81,64 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
       { label: "100/页", value: "100" },
     ]
   });
+  // Step 1: keys-only list for counts and pagination
+  const {
+    data: allKeys = [],
+    isError: isKeysError,
+    error: keysError,
+    refetch: refetchKeys,
+    isFetching: isFetchingKeys,
+  } = useEtcdKeysOnlyQuery({ keyPrefix, currentProfileName, configLoading });
+
+  // Derived filtered keys for search
+  const filteredKeys = useMemo(() => {
+    if (!searchQuery) return allKeys;
+    return allKeys.filter(k => k.includes(searchQuery));
+  }, [allKeys, searchQuery]);
+
+  // Pagination slice of keys
+  const pageKeys = useMemo(() => {
+    const startIndex = (currentPage - 1) * pageSize;
+    return filteredKeys.slice(startIndex, startIndex + pageSize);
+  }, [filteredKeys, currentPage, pageSize]);
+
+  // Step 2: fetch values for range [firstKey, lastKey] on the current page
+  const firstKey = pageKeys[0];
+  const lastKey = pageKeys[pageKeys.length - 1];
+  const {
+    data: pageRangeItems = [],
+    isError: isValuesError,
+    error: valuesError,
+    refetch: refetchValues,
+    isFetching: isFetchingValues,
+  } = useEtcdValuesInRangeQuery({ startKey: firstKey, endKey: lastKey, currentProfileName, enabled: !configLoading && pageKeys.length > 0 });
+  // Add delayed loading state to prevent UI flashing for quick operations
+  const [delayedLoading] = useDebounce(isFetchingKeys || isFetchingValues, 800);
+  const loadError = (isKeysError ? (typeof keysError === "string" ? keysError : (keysError instanceof Error ? keysError.message : "Unknown error")) : null)
+    || (isValuesError ? (typeof valuesError === "string" ? valuesError : (valuesError instanceof Error ? valuesError.message : "Unknown error")) : null);
+
+  // Path history state
+  const [pathHistory, setPathHistory] = useState<string[]>([]);
+  const pathHistoryFilteredByPrefix = useMemo(() => {
+    return pathHistory.filter(path => path.startsWith(keyPrefix));
+  }, [pathHistory, keyPrefix]);
+  const [showPathSuggestions, setShowPathSuggestions] = useState(false);
+  const pathInputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowPathSuggestions(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [dropdownRef]);
+
 
   // Dialog state
   const [dialogState, setDialogState] = useState<{
@@ -139,28 +161,24 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
 
   // Manual refresh
   const handleManualRefresh = async () => {
-    await refetch();
+    await refetchKeys();
+    await refetchValues();
     if (keyPrefix !== "") setPathHistory(await savePathToHistory(keyPrefix, currentProfileName ?? ""));
   };
 
-  // Filter and paginate data
-  const filteredData = useMemo(() => {
-    return tableData.filter(item => (
-      searchQuery ? item.key.includes(searchQuery) || item.value.includes(searchQuery) : true
-    ));
-  }, [tableData, keyPrefix, searchQuery]);
-
+  // Pagination
   const paginatedData = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredData.slice(startIndex, startIndex + pageSize);
-  }, [filteredData, currentPage, pageSize]);
+    const set = new Set(pageKeys);
+    return pageRangeItems.filter(i => set.has(i.key)); // In case of getting extra keys during value fetching
+  }, [pageRangeItems, pageKeys]);
 
   // Handle path selection from dropdown
   const handleSelectPath = async (path: string) => {
     setKeyPrefix(path);
     setShowPathSuggestions(false);
     setPathHistory(await savePathToHistory(path, currentProfileName ?? ""));
-    await refetch();
+    setCurrentPage(1);
+    await refetchKeys();
   };
 
   // Define the end element for search input
@@ -278,7 +296,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                 <InputGroup endElement={searchEndElement} flex="1">
                   <Input
                     fontFamily="mono"
-                    placeholder="Search keys and values..."
+                    placeholder="Search keys..."
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -420,7 +438,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         </Select.Root>
         <Skeleton loading={delayedLoading} borderRadius="md">
           <Pagination.Root
-            count={filteredData.length}
+            count={filteredKeys.length}
             pageSize={pageSize}
             page={currentPage}
             onPageChange={(details) => { setCurrentPage(details.page); }}
@@ -459,7 +477,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
         </Skeleton>
         <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
-          <Badge>{filteredData.length} keys found</Badge>
+          <Badge>{filteredKeys.length} keys found</Badge>
         </Skeleton>
         {searchQuery && (
           <Badge colorScheme="blue">Search: "{searchQuery}"</Badge>
@@ -484,7 +502,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         <AddKeyDialog
           defaultKeyPrefix={keyPrefix}
           onClose={() => setDialogState(null)}
-          refetch={refetch}
+          refetch={() => { refetchKeys(); refetchValues(); }}
         />
       )}
 
@@ -494,7 +512,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={refetch}
+          refetch={() => { refetchKeys(); refetchValues(); }}
         />
       )}
 
@@ -504,7 +522,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           keyToDelete={dialogState.key}
           valueToDelete={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={refetch}
+          refetch={() => { refetchKeys(); refetchValues(); }}
         />
       )}
 

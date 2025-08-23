@@ -57,6 +57,30 @@ export async function fetchEtcdItems(prefix: string = '/'): Promise<EtcdItem[]> 
 }
 
 /**
+ * Fetch only keys by prefix (no values), for counts and pagination
+ */
+export async function fetchEtcdKeysOnly(prefix: string = '/'): Promise<string[]> {
+    try {
+        return await invoke<string[]>('list_keys_only', { prefix });
+    } catch (error) {
+        console.error('Error fetching etcd keys only:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetch values by key range [startKey, endKey] inclusive
+ */
+export async function fetchValuesInRange(startKey: string, endKey: string): Promise<EtcdItem[]> {
+    try {
+        return await invoke<EtcdItem[]>('get_values_in_range', { startKey: startKey, endInclusive: endKey });
+    } catch (error) {
+        console.error('Error fetching values in range:', error);
+        throw error;
+    }
+}
+
+/**
  * Put a key-value pair into etcd
  * @param key The key to add
  * @param value The value to add
