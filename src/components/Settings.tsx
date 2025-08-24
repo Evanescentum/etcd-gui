@@ -323,7 +323,6 @@ function Settings({
 
             <Card.Footer justifyContent="flex-end">
               <Button
-                colorScheme="blue"
                 onClick={handleSaveTheme}
                 disabled={!hasUnsavedChanges()}
                 loading={configSaving}
@@ -378,7 +377,7 @@ function Settings({
               <Button variant="outline" colorPalette="red" onClick={handleDiscardAndContinue}>
                 Discard Changes
               </Button>
-              <Button colorScheme="blue" onClick={handleSaveAndContinue}>
+              <Button onClick={handleSaveAndContinue}>
                 Save Changes
               </Button>
             </Dialog.Footer>

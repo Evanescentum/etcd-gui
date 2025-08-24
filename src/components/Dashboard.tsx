@@ -378,6 +378,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                         <IconButton
                           aria-label="Edit"
                           children={<TbEdit />}
+                          variant="ghost"
                           size="sm"
                           onClick={() => setDialogState({ action: "edit", key: item.key, value: item.value, })}
                         />
@@ -387,7 +388,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                           aria-label="Delete"
                           children={<LuTrash2 />}
                           size="sm"
-                          colorScheme="red"
+                          colorPalette="red"
                           variant="ghost"
                           onClick={() => setDialogState({ action: "delete", key: item.key, value: item.value })}
                         />
@@ -490,7 +491,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           <Badge>{filteredKeys.length} keys found</Badge>
         </Skeleton>
         {searchQuery && (
-          <Badge colorScheme="blue">Search: "{searchQuery}"</Badge>
+          <Badge colorPalette="blue">Search: "{searchQuery}"</Badge>
         )}
         <Spacer />
         {loadError ?

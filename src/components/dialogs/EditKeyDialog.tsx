@@ -99,7 +99,6 @@ function EditKeyDialog({
                             Cancel
                         </Button>
                         <Button
-                            colorScheme="blue"
                             onClick={() => mutateAsync({ key: dialogKey, value: dialogValue }).then(onClose)}
                             disabled={!dialogKey.trim() || !dialogValue.trim() || isPending}
                             loading={isPending}

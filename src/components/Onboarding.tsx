@@ -268,7 +268,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                         <IconButton
                           aria-label="Remove endpoint"
                           children={<LuTrash2 />}
-                          colorScheme="red"
+                          colorPalette="red"
                           variant="ghost"
                           onClick={() => removeEndpoint(index)}
                           disabled={profile.endpoints.length <= 1}
@@ -432,14 +432,14 @@ function Onboarding({ onComplete }: OnboardingProps) {
 
               {steps.hasNextStep ? (
                 <Steps.NextTrigger asChild>
-                  <Button colorScheme="blue">
+                  <Button colorPalette="blue">
                     Next
                     <Box ml={2}><LuArrowRight /></Box>
                   </Button>
                 </Steps.NextTrigger>
               ) : (
                 <Button
-                  colorScheme="blue"
+                  colorPalette="blue"
                   onClick={handleFinish}
                   loadingText="Setting Up"
                 >

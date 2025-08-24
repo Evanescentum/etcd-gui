@@ -77,8 +77,7 @@ function AddKeyDialog({
                         <Button variant="outline" mr={3} onClick={onClose}>
                             Cancel
                         </Button>
-                        <Button colorScheme="blue"
-                            onClick={() => mutateAsync({ key: dialogNewKey, value: dialogNewValue }).then(onClose)}
+                        <Button onClick={() => mutateAsync({ key: dialogNewKey, value: dialogNewValue }).then(onClose)}
                             loading={isPending} disabled={!dialogNewKey.trim() || !dialogNewValue.trim() || isPending}>
                             Add
                         </Button>

@@ -200,7 +200,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                                                 <IconButton
                                                     aria-label="Remove endpoint"
                                                     children={<LuTrash2 />}
-                                                    colorScheme="red"
+                                                    colorPalette="red"
                                                     variant="ghost"
                                                     onClick={() => removeEndpoint(index)}
                                                     disabled={editedProfile.endpoints.length <= 1}
@@ -345,7 +345,6 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                             Cancel
                         </Button>
                         <Button
-                            colorScheme="blue"
                             onClick={handleSave}
                             loading={loading}
                             disabled={
