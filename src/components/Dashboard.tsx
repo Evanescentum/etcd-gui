@@ -24,12 +24,13 @@ import {
   createListCollection
 } from "@chakra-ui/react";
 import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
-import { TbEdit } from "react-icons/tb";
+import { TbEdit, TbEye } from "react-icons/tb";
 import { Tooltip } from "../components/ui/tooltip";
 import { AppConfig, savePathToHistory, getPathHistory } from "../api/etcd";
 import AddKeyDialog from "./dialogs/AddKeyDialog";
 import DeleteKeyDialog from "./dialogs/DeleteKeyDialog";
 import EditKeyDialog from "./dialogs/EditKeyDialog";
+import ViewValueDialog from "./dialogs/ViewValueDialog";
 import { useDebounce } from "use-debounce";
 
 // 表格单元格中的 Tooltip 组件
@@ -142,7 +143,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
 
   // Dialog state
   const [dialogState, setDialogState] = useState<{
-    action: "add" | "edit" | "delete",
+    action: "add" | "edit" | "delete" | "view",
     key: string,
     value: string,
   } | null>(null);
@@ -364,6 +365,15 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                   </Table.Cell>
                   <Table.Cell>
                     <HStack gap={2}>
+                      <Tooltip content="View" showArrow>
+                        <IconButton
+                          aria-label="View"
+                          children={<TbEye />}
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setDialogState({ action: "view", key: item.key, value: item.value })}
+                        />
+                      </Tooltip>
                       <Tooltip content="Edit key" showArrow>
                         <IconButton
                           aria-label="Edit"
@@ -523,6 +533,15 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           valueToDelete={dialogState.value}
           onClose={() => setDialogState(null)}
           refetch={() => { refetchKeys(); refetchValues(); }}
+        />
+      )}
+
+      {/* View Value Dialog */}
+      {dialogState && dialogState.action === "view" && (
+        <ViewValueDialog
+          keyToView={dialogState.key}
+          valueToView={dialogState.value}
+          onClose={() => setDialogState(null)}
         />
       )}
 
