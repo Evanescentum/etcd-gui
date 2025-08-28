@@ -112,14 +112,30 @@ async fn update_config(
     let mut app_state = state.lock().await;
 
     // Save config to disk
-    let file = std::fs::File::create(config::AppConfig::get_config_path(&app_handle)?)
-        .inspect_err(|_| {
-            println!(
-                "Failed to create config file at {:?}",
-                config::AppConfig::get_config_path(&app_handle)
-            );
-        })
-        .map_err(|e| format!("Failed to create config file: {}", e))?;
+    let path = config::AppConfig::get_config_path(&app_handle)?;
+    let file = match File::create(&path) {
+        Ok(f) => f,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            // Create parent directory only when the path doesn't exist, then retry
+            let parent = path.parent().ok_or(format!(
+                "Failed to determine parent directory for config path: {:?}",
+                &path
+            ))?;
+
+            std::fs::create_dir_all(parent)
+                .map_err(|err| format!("Failed to create config directory: {}", err))?;
+            File::create(&path).map_err(|err| {
+                format!(
+                    "Failed to create config file after creating directory: {}",
+                    err
+                )
+            })?
+        }
+        Err(e) => {
+            println!("Failed to create config file at {:?}: {}", &path, e);
+            return Err(format!("Failed to create config file: {}", e));
+        }
+    };
 
     serde_json::to_writer_pretty(file, &config)
         .map_err(|e| format!("Failed to write config: {}", e))?;
