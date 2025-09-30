@@ -231,3 +231,39 @@ export async function openDevtools(): Promise<void> {
         throw error;
     }
 }
+
+/**
+ * Member information in the cluster
+ */
+export interface MemberInfo {
+    id: number;
+    name: string;
+    peer_urls: string[];
+    client_urls: string[];
+}
+
+/**
+ * Cluster information including members and status
+ */
+export interface ClusterInfo {
+    cluster_id: number;
+    member_id: number;
+    version: string;
+    db_size: number;
+    raft_index: number;
+    raft_term: number;
+    leader: number;
+    members: MemberInfo[];
+}
+
+/**
+ * Get cluster information including members and status
+ */
+export async function getClusterInfo(): Promise<ClusterInfo> {
+    try {
+        return await invoke<ClusterInfo>('get_cluster_info');
+    } catch (error) {
+        console.error('Error getting cluster info:', error);
+        throw error;
+    }
+}

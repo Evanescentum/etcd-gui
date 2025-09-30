@@ -1,5 +1,5 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
-import { EtcdItem, fetchEtcdItems, fetchEtcdKeysOnly, fetchValuesInRange } from "../api/etcd";
+import { EtcdItem, fetchEtcdItems, fetchEtcdKeysOnly, fetchValuesInRange, getClusterInfo, type ClusterInfo } from "../api/etcd";
 
 export function useEtcdItemsQuery({ keyPrefix, currentProfileName, configLoading }: {
     keyPrefix: string;
@@ -12,6 +12,19 @@ export function useEtcdItemsQuery({ keyPrefix, currentProfileName, configLoading
         staleTime: 1000 * 60,
         retry: 2,
         enabled: !configLoading
+    });
+}
+
+export function useClusterInfoQuery({ currentProfileName, configLoading }: {
+    currentProfileName: string;
+    configLoading: boolean;
+}): UseQueryResult<ClusterInfo, Error> {
+    return useQuery({
+        queryKey: ["cluster-info", currentProfileName],
+        queryFn: async () => await getClusterInfo(),
+        staleTime: 1000 * 60,
+        retry: 2,
+        enabled: !configLoading && !!currentProfileName,
     });
 }
 

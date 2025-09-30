@@ -52,6 +52,13 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
     await saveConfig(updatedConfig);
     // Reconnect to etcd with the new profile
     await initializeEtcdClient();
+
+    // Invalidate all queries related to the old profile
+    queryClient.invalidateQueries({ queryKey: ["etcd-items"] });
+    queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
+    queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
+    queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
+
     setLoading(false);
 
   };
@@ -152,8 +159,11 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
 
       if (selectedProfile.originalName === config.current_profile) {
         await initializeEtcdClient();
-        // Manually invalidate the cache for the dashboard
-        queryClient.invalidateQueries({ queryKey: ["etcd-items", config.current_profile] });
+        // Manually invalidate all caches for the current profile
+        queryClient.invalidateQueries({ queryKey: ["etcd-items"] });
+        queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
+        queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
+        queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
       }
 
       toaster.create({

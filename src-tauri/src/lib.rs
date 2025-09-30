@@ -4,6 +4,7 @@ mod core;
 mod state;
 
 use client::should_refresh;
+use serde::Serialize;
 use state::AppState;
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
@@ -94,6 +95,67 @@ async fn delete_key(key: String, state: State<'_, Mutex<AppState>>) -> Result<()
     }
 
     res.map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_cluster_info(state: State<'_, Mutex<AppState>>) -> Result<ClusterInfo, String> {
+    let mut state = state.lock().await;
+
+    // Get cluster members
+    let mut members_res = core::get_cluster_members(state.get_client().await?).await;
+    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&members_res)) {
+        members_res = core::get_cluster_members(state.get_client().await?).await;
+    }
+    let members = members_res.map_err(|e| e.to_string())?;
+
+    // Get cluster status
+    let mut status_res = core::get_cluster_status(state.get_client().await?).await;
+    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&status_res)) {
+        status_res = core::get_cluster_status(state.get_client().await?).await;
+    }
+    let status = status_res.map_err(|e| e.to_string())?;
+
+    // Convert members to serializable format
+    let members_info: Vec<MemberInfo> = members
+        .iter()
+        .map(|m| MemberInfo {
+            id: m.id(),
+            name: m.name().to_string(),
+            peer_urls: m.peer_urls().to_vec(),
+            client_urls: m.client_urls().to_vec(),
+        })
+        .collect();
+
+    Ok(ClusterInfo {
+        cluster_id: status.header().unwrap().cluster_id(),
+        member_id: status.header().unwrap().member_id(),
+        version: status.version().to_string(),
+        db_size: status.db_size(),
+        raft_index: status.raft_index(),
+        raft_term: status.raft_term(),
+        leader: status.leader(),
+        members: members_info,
+    })
+}
+
+#[derive(Serialize)]
+struct MemberInfo {
+    id: u64,
+    name: String,
+    peer_urls: Vec<String>,
+    client_urls: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct ClusterInfo {
+    cluster_id: u64,
+    member_id: u64,
+    version: String,
+    db_size: i64,
+    raft_index: u64,
+    raft_term: u64,
+    leader: u64,
+    members: Vec<MemberInfo>,
 }
 
 #[tauri::command]
@@ -312,6 +374,7 @@ pub fn run() {
             get_values_in_range,
             put_key,
             delete_key,
+            get_cluster_info,
             get_config,
             update_config,
             test_connection,

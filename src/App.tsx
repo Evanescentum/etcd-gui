@@ -11,7 +11,7 @@ import {
 import Profiles from "./components/Profiles";
 import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
-import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert } from "react-icons/lu";
+import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert, LuNetwork } from "react-icons/lu";
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
 import type { AppConfig } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
@@ -21,6 +21,7 @@ import { lazy } from "react";
 
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
+const Cluster = lazy(() => import("./components/Cluster"));
 const currentWindow = getCurrentWindow();
 
 function App() {
@@ -257,6 +258,12 @@ function App() {
             <LuLayoutDashboard /> Dashboard
           </Tabs.Trigger>
           <Tabs.Trigger
+            value="cluster"
+            justifyContent="flex-start"
+          >
+            <LuNetwork /> Cluster
+          </Tabs.Trigger>
+          <Tabs.Trigger
             value="profiles"
             justifyContent="flex-start"
           >
@@ -273,6 +280,12 @@ function App() {
         {/* Content area */}
         <Tabs.Content value="dashboard" paddingX={2} width="100%" height="100%">
           <Dashboard
+            configLoading={configLoading}
+            appConfig={appConfig}
+          />
+        </Tabs.Content>
+        <Tabs.Content value="cluster" paddingX={2} width="100%" height="100%">
+          <Cluster
             configLoading={configLoading}
             appConfig={appConfig}
           />

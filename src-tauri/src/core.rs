@@ -106,3 +106,16 @@ pub async fn put_key(key: &str, value: &str, client: &mut Client) -> Result<(), 
 pub async fn delete_key(key: &str, client: &mut Client) -> Result<(), Error> {
     client.delete(key, None).await.map(|_| ())
 }
+
+/// Get cluster member list
+pub async fn get_cluster_members(client: &mut Client) -> Result<Vec<etcd_client::Member>, Error> {
+    client
+        .member_list()
+        .await
+        .map(|response| response.members().to_vec())
+}
+
+/// Get cluster status for a specific endpoint
+pub async fn get_cluster_status(client: &mut Client) -> Result<etcd_client::StatusResponse, Error> {
+    client.status().await
+}
