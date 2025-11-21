@@ -11,7 +11,7 @@ import {
 import Profiles from "./components/Profiles";
 import Settings from "./components/Settings";
 import Onboarding from "./components/Onboarding";
-import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert, LuNetwork } from "react-icons/lu";
+import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert, LuNetwork, LuFileText } from "react-icons/lu";
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
 import type { AppConfig } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
@@ -22,6 +22,7 @@ import { lazy } from "react";
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Cluster = lazy(() => import("./components/Cluster"));
+const Logs = lazy(() => import("./components/Logs"));
 const currentWindow = getCurrentWindow();
 
 function App() {
@@ -241,6 +242,7 @@ function App() {
         value={activeTab}
         onValueChange={handleTabChange}
         orientation="vertical"
+        lazyMount
         width="100vw"
         height="100vh"
         display="flex"
@@ -270,6 +272,12 @@ function App() {
             <LuUsers /> Profiles
           </Tabs.Trigger>
           <Tabs.Trigger
+            value="logs"
+            justifyContent="flex-start"
+          >
+            <LuFileText /> Logs
+          </Tabs.Trigger>
+          <Tabs.Trigger
             value="settings"
             justifyContent="flex-start"
           >
@@ -296,6 +304,9 @@ function App() {
             configLoading={configLoading}
             saveConfig={saveConfig}
           />
+        </Tabs.Content>
+        <Tabs.Content value="logs" paddingX={2} width="100%" height="100%">
+          <Logs />
         </Tabs.Content>
         <Tabs.Content value="settings" paddingX={2} width="100%" height="100%">
           <Settings

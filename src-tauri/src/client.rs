@@ -11,6 +11,7 @@ pub struct Item {
 }
 
 pub async fn new_connect(profile: &Profile) -> Result<etcd_client::Client, String> {
+    log::info!("Connecting to etcd with profile: {}", profile.name);
     let endpoints: Vec<String> = profile
         .endpoints
         .iter()
@@ -19,8 +20,9 @@ pub async fn new_connect(profile: &Profile) -> Result<etcd_client::Client, Strin
 
     // Build connection options
     let mut options = ConnectOptions::new();
-    if let Some((username, password)) = &profile.user {
-        options = options.with_user(username, password);
+    if let Some((username, _)) = &profile.user {
+        log::debug!("Using authentication for user: {}", username);
+        options = options.with_user(username, profile.user.as_ref().unwrap().1.as_str());
     }
     if let Some(timeout) = profile.timeout_ms {
         options = options.with_timeout(std::time::Duration::from_millis(timeout));
@@ -31,7 +33,10 @@ pub async fn new_connect(profile: &Profile) -> Result<etcd_client::Client, Strin
 
     Client::connect(endpoints, Some(options))
         .await
-        .map_err(|err| format!("Failed to connect to etcd: {}", err))
+        .map_err(|err| {
+            log::error!("Failed to connect to etcd: {}", err);
+            format!("Failed to connect to etcd: {}", err)
+        })
 }
 
 pub fn should_refresh<T>(res: &Result<T, etcd_client::Error>) -> bool {

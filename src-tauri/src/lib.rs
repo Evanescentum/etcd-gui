@@ -3,7 +3,6 @@ mod config;
 mod core;
 mod state;
 
-use client::should_refresh;
 use serde::Serialize;
 use state::AppState;
 use std::collections::HashMap;
@@ -11,6 +10,7 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use tauri::{Manager, State};
+use tauri_plugin_log::{Target, TargetKind};
 use tokio::sync::Mutex;
 
 /// Initialize the etcd client managed by the application state.
@@ -19,8 +19,15 @@ use tokio::sync::Mutex;
 /// otherwise returns true.
 #[tauri::command]
 async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
+    log::info!("Initializing etcd client...");
     let _ = state.lock().await.etcd_client.take(); // Reset the client if it exists
-    state.lock().await.init_client().await
+    let res = state.lock().await.init_client().await;
+    if let Err(ref e) = res {
+        log::error!("Failed to initialize client: {}", e);
+    } else {
+        log::info!("Etcd client initialized successfully");
+    }
+    res
 }
 
 #[tauri::command]
@@ -28,14 +35,13 @@ async fn list_keys(
     prefix: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<client::Item>, String> {
+    log::debug!("Listing keys with prefix: {}", prefix);
     // Call the client function with the provided prefix
     let mut state = state.lock().await;
-    let mut res = core::list_keys(&prefix, state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
-        res = core::list_keys(&prefix, state.get_client().await?).await;
-    }
-
-    res.map_err(|e| e.to_string())
+    core::list_keys(&prefix, &mut state).await.map_err(|e| {
+        log::error!("Failed to list keys: {}", e);
+        e
+    })
 }
 
 #[tauri::command]
@@ -43,13 +49,14 @@ async fn list_keys_only(
     prefix: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<String>, String> {
+    log::debug!("Listing keys only with prefix: {}", prefix);
     let mut state = state.lock().await;
-    let mut res = core::list_keys_only(&prefix, state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
-        res = core::list_keys_only(&prefix, state.get_client().await?).await;
-    }
-
-    res.map_err(|e| e.to_string())
+    core::list_keys_only(&prefix, &mut state)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to list keys only: {}", e);
+            e
+        })
 }
 
 #[tauri::command]
@@ -58,15 +65,14 @@ async fn get_values_in_range(
     end_inclusive: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<client::Item>, String> {
+    log::debug!("Getting values in range: {} ~ {}", start_key, end_inclusive);
     let mut state = state.lock().await;
-    let mut res =
-        core::get_values_in_range(&start_key, &end_inclusive, state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
-        res =
-            core::get_values_in_range(&start_key, &end_inclusive, state.get_client().await?).await;
-    }
-
-    res.map_err(|e| e.to_string())
+    core::get_values_in_range(&start_key, &end_inclusive, &mut state)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get values in range: {}", e);
+            e
+        })
 }
 
 #[tauri::command]
@@ -75,45 +81,42 @@ async fn put_key(
     value: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<(), String> {
+    log::info!("Putting key: {}", key);
     let mut state = state.lock().await;
     state.app_config.ensure_current_profile_unlocked()?;
-    let mut res = core::put_key(&key, &value, state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
-        res = core::put_key(&key, &value, state.get_client().await?).await;
-    }
-
-    res.map_err(|e| e.to_string())
+    core::put_key(&key, &value, &mut state).await.map_err(|e| {
+        log::error!("Failed to put key {}: {}", key, e);
+        e
+    })
 }
 
 #[tauri::command]
 async fn delete_key(key: String, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
+    log::info!("Deleting key: {}", key);
     let mut state = state.lock().await;
     state.app_config.ensure_current_profile_unlocked()?;
-    let mut res = core::delete_key(&key, state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&res)) {
-        res = core::delete_key(&key, state.get_client().await?).await;
-    }
-
-    res.map_err(|e| e.to_string())
+    core::delete_key(&key, &mut state).await.map_err(|e| {
+        log::error!("Failed to delete key {}: {}", key, e);
+        e
+    })
 }
 
 #[tauri::command]
 async fn get_cluster_info(state: State<'_, Mutex<AppState>>) -> Result<ClusterInfo, String> {
+    log::debug!("Getting cluster info");
     let mut state = state.lock().await;
 
     // Get cluster members
-    let mut members_res = core::get_cluster_members(state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&members_res)) {
-        members_res = core::get_cluster_members(state.get_client().await?).await;
-    }
-    let members = members_res.map_err(|e| e.to_string())?;
+    let members = core::get_cluster_members(&mut state).await.map_err(|e| {
+        log::error!("Failed to get cluster members: {}", e);
+        e
+    })?;
 
     // Get cluster status
-    let mut status_res = core::get_cluster_status(state.get_client().await?).await;
-    if let Some(_) = state.etcd_client.take_if(|_| should_refresh(&status_res)) {
-        status_res = core::get_cluster_status(state.get_client().await?).await;
-    }
-    let status = status_res.map_err(|e| e.to_string())?;
+    let status = core::get_cluster_status(&mut state).await.map_err(|e| {
+        log::error!("Failed to get cluster status: {}", e);
+        e
+    })?;
 
     // Convert members to serializable format
     let members_info: Vec<MemberInfo> = members
@@ -171,6 +174,7 @@ async fn update_config(
     state: State<'_, Mutex<AppState>>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
+    log::info!("Updating configuration...");
     let mut app_state = state.lock().await;
 
     // Save config to disk
@@ -184,6 +188,8 @@ async fn update_config(
                 &path
             ))?;
 
+            log::info!("Config directory not found at {:?}, creating...", parent);
+
             std::fs::create_dir_all(parent)
                 .map_err(|err| format!("Failed to create config directory: {}", err))?;
             File::create(&path).map_err(|err| {
@@ -194,7 +200,7 @@ async fn update_config(
             })?
         }
         Err(e) => {
-            println!("Failed to create config file at {:?}: {}", &path, e);
+            log::error!("Failed to create config file at {:?}: {}", &path, e);
             return Err(format!("Failed to create config file: {}", e));
         }
     };
@@ -210,21 +216,27 @@ async fn update_config(
 
     // Re-initialize client if profile changed
     if should_reconnect {
+        log::info!("Current profile changed, resetting client");
         app_state.etcd_client = None; // Reset the client
     }
 
+    log::info!("Configuration updated successfully");
     Ok(())
 }
 
 #[tauri::command]
 async fn test_connection(profile: config::Profile) -> Result<String, String> {
+    log::info!("Testing connection for profile: {}", profile.name);
     // Try to connect using the profile
     let mut client = client::new_connect(&profile).await?;
     client
         .status()
         .await
         .map(|status| status.version().to_string())
-        .map_err(|e| e.to_string())
+        .map_err(|e| {
+            log::error!("Connection test failed: {}", e);
+            e.to_string()
+        })
 }
 
 #[tauri::command]
@@ -281,6 +293,7 @@ async fn save_path_history(
     profile_name: String,
     app_handle: tauri::AppHandle,
 ) -> Result<Vec<String>, String> {
+    log::debug!("Saving path history for profile {}: {}", profile_name, path);
     let history_path = get_history_file_path(&app_handle)?;
 
     // Read existing history map
@@ -290,7 +303,9 @@ async fn save_path_history(
     };
 
     // Get or create history for this profile
-    let history = history_map.entry(profile_name).or_insert_with(Vec::new);
+    let history = history_map
+        .entry(profile_name.clone())
+        .or_insert_with(Vec::new);
 
     // Don't add duplicates, remove if exists and add to front
     history.retain(|p| p != &path);
@@ -309,13 +324,20 @@ async fn save_path_history(
         .truncate(true)
         .create(true)
         .open(&history_path)
-        .map_err(|e| format!("Failed to open history file: {e}"))?;
+        .map_err(|e| {
+            log::error!("Failed to open history file: {}", e);
+            format!("Failed to open history file: {e}")
+        })?;
 
-    let content = serde_json::to_string(&history_map)
-        .map_err(|e| format!("Failed to serialize history: {e}"))?;
+    let content = serde_json::to_string(&history_map).map_err(|e| {
+        log::error!("Failed to serialize history: {}", e);
+        format!("Failed to serialize history: {e}")
+    })?;
 
-    file.write_all(content.as_bytes())
-        .map_err(|e| format!("Failed to write history: {e}"))?;
+    file.write_all(content.as_bytes()).map_err(|e| {
+        log::error!("Failed to write history: {}", e);
+        format!("Failed to write history: {e}")
+    })?;
 
     Ok(res)
 }
@@ -364,6 +386,20 @@ fn read_history_file(path: &PathBuf) -> Result<HashMap<String, Vec<String>>, std
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_log::Builder::new()
+                .clear_targets()
+                .targets([
+                    Target::new(TargetKind::Webview),
+                    Target::new(TargetKind::LogDir {
+                        file_name: "app".to_string().into(),
+                    }),
+                ])
+                .max_file_size(1024 * 1024) // 1 MB
+                .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(20))
+                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
+                .build(),
+        )
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())

@@ -13,8 +13,9 @@
     "@chakra-ui/react": "3.27.0",
     "@emotion/react": "11.14.0",
     "@tanstack/react-query": "^5.83.0",
-    "@tauri-apps/api": "2.6.0",
+    "@tauri-apps/api": "2.9.0",
     "@tauri-apps/plugin-clipboard-manager": "2.3.0",
+    "@tauri-apps/plugin-log": "^2.7.1",
     "@tauri-apps/plugin-opener": "2.4.0",
     "@tauri-apps/plugin-window-state": "2.3.0",
     "etcd-gui": "file:",
@@ -23,7 +24,8 @@
     "react": "19.1.1",
     "react-dom": "19.1.1",
     "react-icons": "^5.5.0",
-    "use-debounce": "10.0.5"
+    "use-debounce": "10.0.5",
+    "use-stick-to-bottom": "^1.1.1"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.8.4",

@@ -57,11 +57,13 @@ impl AppConfig {
     pub fn from_file(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
         let path = path.as_ref();
         if path.exists() {
+            log::debug!("Loading config from: {:?}", path);
             let file = std::fs::File::open(path)?;
             let reader = std::io::BufReader::new(file);
             let config: AppConfig = serde_json::from_reader(reader)?;
             Ok(config)
         } else {
+            log::info!("Config file not found at {:?}, using default", path);
             Ok(AppConfig::default())
         }
     }

@@ -15,6 +15,7 @@ export interface AppConfig {
     profiles: Profile[];
     current_profile: string | null;
     color_theme: 'Light' | 'Dark' | 'System';
+    log_file_path?: string;
 }
 
 export interface Profile {
