@@ -8,9 +8,9 @@ import {
   Text,
   Spinner
 } from "@chakra-ui/react";
-import Profiles from "./components/Profiles";
-import Settings from "./components/Settings";
-import Onboarding from "./components/Onboarding";
+import Profiles from "./components/tabs/Profiles";
+import Settings from "./components/tabs/Settings";
+import Onboarding from "./components/tabs/Onboarding";
 import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert, LuNetwork, LuFileText } from "react-icons/lu";
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
 import type { AppConfig } from "./api/etcd";
@@ -19,9 +19,9 @@ import { useTheme } from "next-themes";
 import { Provider } from "./components/ui/provider";
 
 
-const Dashboard = lazy(() => import("./components/Dashboard"));
-const Cluster = lazy(() => import("./components/Cluster"));
-const Logs = lazy(() => import("./components/Logs"));
+const Dashboard = lazy(() => import("./components/tabs/Dashboard"));
+const Cluster = lazy(() => import("./components/tabs/Cluster"));
+const Logs = lazy(() => import("./components/tabs/Logs"));
 
 function App() {
   // Color mode

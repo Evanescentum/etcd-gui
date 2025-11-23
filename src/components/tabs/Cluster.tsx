@@ -27,8 +27,8 @@ import {
     LuShield,
     LuGlobe,
 } from "react-icons/lu";
-import type { AppConfig } from "../api/etcd";
-import { useClusterInfoQuery } from "../hooks/useEtcdQuery";
+import type { AppConfig } from "../../api/etcd";
+import { useClusterInfoQuery } from "../../hooks/useEtcdQuery";
 
 interface StatCardProps {
     label: string;

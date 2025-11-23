@@ -18,11 +18,11 @@ import {
   createListCollection,
   ScrollArea,
 } from "@chakra-ui/react";
-import type { AppConfig } from "../api/etcd";
-import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../api/etcd";
-import { toaster } from "./ui/toaster";
+import type { AppConfig } from "../../api/etcd";
+import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
+import { toaster } from "../ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug } from "react-icons/lu";
-import { Tooltip } from "./ui/tooltip";
+import { Tooltip } from "../ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 // --- Hooks ---

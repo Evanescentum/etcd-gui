@@ -15,12 +15,12 @@ import {
   Steps,
   useSteps,
 } from "@chakra-ui/react";
-import { useColorModeValue } from "../components/ui/color-mode";
+import { useColorModeValue } from "../../components/ui/color-mode";
 import { LuPlus, LuTrash2, LuArrowRight, LuChevronLeft, LuChevronsRight, LuRefreshCw, LuCheck, LuCircleAlert } from "react-icons/lu";
-import { updateConfig, testConnection } from "../api/etcd";
-import type { AppConfig, Profile } from "../api/etcd";
-import { toaster } from "./ui/toaster";
-import { Tooltip } from "../components/ui/tooltip";
+import { updateConfig, testConnection } from "../../api/etcd";
+import type { AppConfig, Profile } from "../../api/etcd";
+import { toaster } from "../ui/toaster";
+import { Tooltip } from "../../components/ui/tooltip";
 
 interface OnboardingProps {
   onComplete: () => void;

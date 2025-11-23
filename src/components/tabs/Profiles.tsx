@@ -12,11 +12,11 @@ import {
 } from "@chakra-ui/react";
 import { LuPlus, LuTrash2, LuServer, LuArrowRight, LuCheck, LuLock } from "react-icons/lu";
 import { TbEdit } from "react-icons/tb";
-import { Tooltip } from "../components/ui/tooltip";
-import { toaster } from "../components/ui/toaster";
-import { initializeEtcdClient } from "../api/etcd";
-import type { AppConfig, Profile } from "../api/etcd";
-import ProfileEditDialog from "./dialogs/ProfileEditDialog";
+import { Tooltip } from "../../components/ui/tooltip";
+import { toaster } from "../../components/ui/toaster";
+import { initializeEtcdClient } from "../../api/etcd";
+import type { AppConfig, Profile } from "../../api/etcd";
+import ProfileEditDialog from "../dialogs/ProfileEditDialog";
 import { useDebounce } from "use-debounce";
 import { useQueryClient } from "@tanstack/react-query";
 
