@@ -1,4 +1,4 @@
-import { useState, useEffect, RefObject } from "react";
+import { useState, useEffect, useRef, RefObject } from "react";
 import { useForm, Controller } from "react-hook-form";
 import {
   Box,
@@ -195,27 +195,27 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
     defaultValues: config,
   });
 
-  const watchedTheme = watch("color_theme");
-  const watchedBodyFont = watch("font_family_body");
-  const watchedMonoFont = watch("font_family_mono");
-
   // Use custom hook for tab interception
   const { showDialog, confirmNavigation, cancelNavigation } = useUnsavedChanges(isDirty, onBeforeTabChange);
 
+  const isResettingRef = useRef(false);
+
   // Sync form with config prop changes
-  useEffect(() => { reset(config); }, [config, reset]);
+  useEffect(() => {
+    isResettingRef.current = true;
+    reset(config);
+    isResettingRef.current = false;
+  }, [config, reset]);
 
   // Update global config preview
   useEffect(() => {
-    if (onConfigChange) {
-      onConfigChange({
-        ...config,
-        color_theme: watchedTheme,
-        font_family_body: watchedBodyFont,
-        font_family_mono: watchedMonoFont,
-      });
-    }
-  }, [watchedTheme, watchedBodyFont, watchedMonoFont, config, onConfigChange]);
+    const subscription = watch((value) => {
+      if (onConfigChange && !isResettingRef.current) {
+        onConfigChange(value as AppConfig);
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [watch, onConfigChange]);
 
   // Form submission
   const onSubmit = async (data: AppConfig) => {
