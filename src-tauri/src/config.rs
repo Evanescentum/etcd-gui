@@ -6,6 +6,8 @@ pub struct AppConfig {
     pub profiles: Vec<Profile>,
     pub current_profile: Option<String>,
     pub color_theme: ColorTheme,
+    pub font_family_body: Option<String>,
+    pub font_family_mono: Option<String>,
 }
 
 // A profile defines the connection information for a client to connect to etcd
@@ -38,6 +40,8 @@ impl Default for AppConfig {
             profiles: vec![],
             current_profile: None,
             color_theme: ColorTheme::System,
+            font_family_body: None,
+            font_family_mono: None,
         }
     }
 }

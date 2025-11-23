@@ -15,6 +15,8 @@ export interface AppConfig {
     profiles: Profile[];
     current_profile: string | null;
     color_theme: 'Light' | 'Dark' | 'System';
+    font_family_body?: string;
+    font_family_mono?: string;
     log_file_path?: string;
 }
 
@@ -70,7 +72,7 @@ export async function fetchEtcdKeysOnly(prefix: string = '/'): Promise<string[]>
 }
 
 /**
- * Fetch values by key range [startKey, endKey] inclusive
+ * Fetch values in range [startKey, endKey] inclusive
  */
 export async function fetchValuesInRange(startKey: string, endKey: string): Promise<EtcdItem[]> {
     try {
@@ -266,5 +268,17 @@ export async function getClusterInfo(): Promise<ClusterInfo> {
     } catch (error) {
         console.error('Error getting cluster info:', error);
         throw error;
+    }
+}
+
+/**
+ * Get list of available system fonts
+ */
+export async function getSystemFonts(): Promise<string[]> {
+    try {
+        return await invoke<string[]>('get_system_fonts');
+    } catch (error) {
+        console.error('Error getting system fonts:', error);
+        return [];
     }
 }

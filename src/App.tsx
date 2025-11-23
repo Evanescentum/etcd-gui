@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, lazy } from "react";
 import {
   Tabs,
   EmptyState,
@@ -15,19 +15,17 @@ import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert, L
 import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
 import type { AppConfig } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
-import { useColorMode } from "./components/ui/color-mode";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { lazy } from "react";
+import { useTheme } from "next-themes";
+import { Provider } from "./components/ui/provider";
 
 
 const Dashboard = lazy(() => import("./components/Dashboard"));
 const Cluster = lazy(() => import("./components/Cluster"));
 const Logs = lazy(() => import("./components/Logs"));
-const currentWindow = getCurrentWindow();
 
 function App() {
   // Color mode
-  const { setColorMode } = useColorMode();
+  const { setTheme } = useTheme();
 
   // Add state for active tab
   const [activeTab, setActiveTab] = useState("dashboard");
@@ -38,6 +36,7 @@ function App() {
 
   // Add centralized config state
   const [appConfig, setAppConfig] = useState<AppConfig | null>(null);
+  const [savedConfig, setSavedConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const configError = useRef<string | null>(null);
 
@@ -48,6 +47,7 @@ function App() {
       configError.current = null;
       const config = await getConfig();
       setAppConfig(config);
+      setSavedConfig(config);
     } catch (error) {
       console.error("Failed to load config:", error);
       configError.current = error as string;
@@ -57,13 +57,15 @@ function App() {
   };
 
   useEffect(() => {
-    if (!appConfig || appConfig.color_theme !== "System") return;
-    currentWindow.onThemeChanged(({ payload: theme }) => {
-      if (theme) {
-        setColorMode(theme);
-      }
-    });
-  }, [appConfig]);
+    if (!appConfig) return;
+
+    // Sync theme
+    if (appConfig.color_theme === "System") {
+      setTheme("system");
+    } else {
+      setTheme(appConfig.color_theme.toLowerCase());
+    }
+  }, [appConfig?.color_theme, setTheme]);
 
   // Update config function that can be used by components
   const saveConfig = async (newConfig: AppConfig) => {
@@ -71,6 +73,7 @@ function App() {
       setConfigLoading(true);
       await updateConfig(newConfig);
       setAppConfig(newConfig);
+      setSavedConfig(newConfig);
     } catch (error) {
       console.error("Failed to update config:", error);
       toaster.create({
@@ -235,7 +238,10 @@ function App() {
   }
 
   return (
-    <>
+    <Provider
+      fontFamilyBody={appConfig.font_family_body}
+      fontFamilyMono={appConfig.font_family_mono}
+    >
       {/* Left sidebar */}
       <Tabs.Root
         variant={"enclosed"}
@@ -311,14 +317,16 @@ function App() {
         <Tabs.Content value="settings" paddingX={2} width="100%" height="100%">
           <Settings
             onBeforeTabChange={checkBeforeTabChangeRef}
-            config={appConfig}
+            config={savedConfig || appConfig}
             saveConfig={saveConfig}
+            onConfigChange={(newConfig: AppConfig) => { setAppConfig(newConfig) }}
+            onDiscard={() => { if (savedConfig) setAppConfig(savedConfig) }}
           />
         </Tabs.Content>
       </Tabs.Root>
 
       <Toaster />
-    </>
+    </Provider>
   );
 }
 

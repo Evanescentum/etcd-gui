@@ -14,17 +14,16 @@ import {
   Flex,
   IconButton,
   Dialog,
+  Select,
+  createListCollection,
+  ScrollArea,
 } from "@chakra-ui/react";
-import { useColorMode } from "../components/ui/color-mode";
 import type { AppConfig } from "../api/etcd";
-import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools } from "../api/etcd";
+import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../api/etcd";
 import { toaster } from "./ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug } from "react-icons/lu";
-import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { Tooltip } from "./ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-
-const webviewWindow = getCurrentWebviewWindow();
 
 // --- Hooks ---
 
@@ -187,21 +186,36 @@ interface SettingsProps {
   config: AppConfig;
   saveConfig: (config: AppConfig) => Promise<void>;
   onBeforeTabChange?: RefObject<((newTab: string) => Promise<boolean>) | null>;
+  onConfigChange?: (config: AppConfig) => void;
+  onDiscard?: () => void;
 }
 
-function Settings({ config, saveConfig, onBeforeTabChange }: SettingsProps) {
+function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDiscard }: SettingsProps) {
   const { control, handleSubmit, reset, watch, formState: { isDirty, isSubmitting } } = useForm<AppConfig>({
     defaultValues: config,
   });
 
   const watchedTheme = watch("color_theme");
-  const { setColorMode } = useColorMode();
+  const watchedBodyFont = watch("font_family_body");
+  const watchedMonoFont = watch("font_family_mono");
 
   // Use custom hook for tab interception
   const { showDialog, confirmNavigation, cancelNavigation } = useUnsavedChanges(isDirty, onBeforeTabChange);
 
   // Sync form with config prop changes
   useEffect(() => { reset(config); }, [config, reset]);
+
+  // Update global config preview
+  useEffect(() => {
+    if (onConfigChange) {
+      onConfigChange({
+        ...config,
+        color_theme: watchedTheme,
+        font_family_body: watchedBodyFont,
+        font_family_mono: watchedMonoFont,
+      });
+    }
+  }, [watchedTheme, watchedBodyFont, watchedMonoFont, config, onConfigChange]);
 
   // Form submission
   const onSubmit = async (data: AppConfig) => {
@@ -222,19 +236,9 @@ function Settings({ config, saveConfig, onBeforeTabChange }: SettingsProps) {
 
   const handleDiscardAndContinue = () => {
     reset(config);
+    onDiscard?.();
     confirmNavigation();
   };
-
-  // Theme preview
-  useEffect(() => {
-    let active = true;
-    if (watchedTheme === "System") {
-      webviewWindow.theme().then((theme) => { if (active && theme) setColorMode(theme); });
-    } else {
-      setColorMode(watchedTheme.toLowerCase() as "light" | "dark");
-    }
-    return () => { active = false; };
-  }, [watchedTheme, setColorMode]);
 
   const themeOptions = [
     { value: "Light", label: (<HStack><LuSun /> Light</HStack>) },
@@ -242,42 +246,126 @@ function Settings({ config, saveConfig, onBeforeTabChange }: SettingsProps) {
     { value: "System", label: (<HStack><LuMonitor /> System Default</HStack>) }
   ];
 
+  const [systemFonts, setSystemFonts] = useState<string[]>([]);
+
+  useEffect(() => {
+    getSystemFonts().then(setSystemFonts);
+  }, []);
+
+  const fontItems = [
+    { label: "System", value: "" },
+    ...systemFonts.map(font => ({ label: font, value: font })),
+  ];
+
+  const uiFontCollection = createListCollection({ items: fontItems });
+  const codeFontCollection = createListCollection({ items: fontItems });
+
   return (
     <>
-      <Box p={6} maxW="800px" mx="auto">
-        <VStack gap={6} align="stretch">
-          <Heading size="lg">Settings</Heading>
+      <ScrollArea.Root h="100%" w="100%">
+        <ScrollArea.Viewport h="100%" w="100%">
+          <ScrollArea.Content>
+            <Box p={6} maxW="800px" mx="auto">
+              <VStack gap={6} align="stretch">
+                <Heading size="lg">Settings</Heading>
 
-          <ConfigFileSection />
+                <ConfigFileSection />
 
-          <form onSubmit={handleSubmit(onSubmit)}>
-            <Card.Root>
-              <Card.Body gap={4}>
-                <Heading size="md">Appearance</Heading>
-                <Separator />
-                <Box fontSize="sm">
-                  <Text fontWeight="medium" mb={2}>Color Theme</Text>
-                  <Controller
-                    name="color_theme"
-                    control={control}
-                    render={({ field }) => (
-                      <SegmentGroup.Root value={field.value} onValueChange={(e) => field.onChange(e.value)}>
-                        <SegmentGroup.Indicator />
-                        <SegmentGroup.Items items={themeOptions} />
-                      </SegmentGroup.Root>
-                    )}
-                  />
-                </Box>
-              </Card.Body>
-              <Card.Footer justifyContent="flex-end">
-                <Button type="submit" disabled={!isDirty} loading={isSubmitting}>Save Changes</Button>
-              </Card.Footer>
-            </Card.Root>
-          </form>
+                <form onSubmit={handleSubmit(onSubmit)}>
+                  <Card.Root>
+                    <Card.Body gap={4}>
+                      <Heading size="md">Appearance</Heading>
+                      <Separator />
+                      <Box fontSize="sm">
+                        <Text fontWeight="medium" mb={2}>Color Theme</Text>
+                        <Controller
+                          name="color_theme"
+                          control={control}
+                          render={({ field }) => (
+                            <SegmentGroup.Root value={field.value} onValueChange={(e) => field.onChange(e.value)}>
+                              <SegmentGroup.Indicator />
+                              <SegmentGroup.Items items={themeOptions} />
+                            </SegmentGroup.Root>
+                          )}
+                        />
+                      </Box>
+                      <Box fontSize="sm">
+                        <Text fontWeight="medium" mb={2}>UI Font Family</Text>
+                        <Controller
+                          name="font_family_body"
+                          control={control}
+                          render={({ field }) => (
+                            <Select.Root
+                              collection={uiFontCollection}
+                              value={[field.value || ""]}
+                              onValueChange={(e) => field.onChange(e.value[0])}
+                            >
+                              <Select.Trigger>
+                                <Select.ValueText placeholder="System" />
+                              </Select.Trigger>
+                              <Select.Positioner>
+                                <Select.Content>
+                                  {uiFontCollection.items.map((item) => (
+                                    <Select.Item
+                                      item={item}
+                                      key={item.value}
+                                      fontFamily={item.value || "system-ui, sans-serif"}
+                                    >
+                                      {item.label}
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Positioner>
+                            </Select.Root>
+                          )}
+                        />
+                      </Box>
+                      <Box fontSize="sm">
+                        <Text fontWeight="medium" mb={2}>Code Font Family</Text>
+                        <Controller
+                          name="font_family_mono"
+                          control={control}
+                          render={({ field }) => (
+                            <Select.Root
+                              collection={codeFontCollection}
+                              value={[field.value || ""]}
+                              onValueChange={(e) => field.onChange(e.value[0])}
+                            >
+                              <Select.Trigger>
+                                <Select.ValueText placeholder="System" />
+                              </Select.Trigger>
+                              <Select.Positioner>
+                                <Select.Content>
+                                  {codeFontCollection.items.map((item) => (
+                                    <Select.Item
+                                      item={item}
+                                      key={item.value}
+                                      fontFamily={item.value || "mono"}
+                                    >
+                                      {item.label}
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Positioner>
+                            </Select.Root>
+                          )}
+                        />
+                      </Box>
+                    </Card.Body>
+                    <Card.Footer justifyContent="flex-end">
+                      <Button type="submit" disabled={!isDirty} loading={isSubmitting}>Save Changes</Button>
+                    </Card.Footer>
+                  </Card.Root>
+                </form>
 
-          <DevToolsSection />
-        </VStack>
-      </Box>
+                <DevToolsSection />
+              </VStack>
+            </Box>
+          </ScrollArea.Content>
+        </ScrollArea.Viewport>
+        <ScrollArea.Scrollbar />
+        <ScrollArea.Corner />
+      </ScrollArea.Root>
 
       <UnsavedChangesDialog
         open={showDialog}

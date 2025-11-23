@@ -420,7 +420,8 @@ pub fn run() {
             open_config_folder,
             open_devtools,
             save_path_history,
-            get_path_history
+            get_path_history,
+            get_system_fonts
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));
@@ -428,4 +429,28 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+#[tauri::command]
+async fn get_system_fonts() -> Result<Vec<String>, String> {
+    log::debug!("Getting system fonts");
+    let source = font_kit::source::SystemSource::new();
+    match source.all_fonts() {
+        Ok(handles) => {
+            let mut fonts: Vec<String> = handles
+                .into_iter()
+                .filter_map(|handle| handle.load().ok().map(|font| font.family_name()))
+                .collect();
+
+            // Deduplicate and sort
+            fonts.sort();
+            fonts.dedup();
+
+            Ok(fonts)
+        }
+        Err(e) => {
+            log::error!("Failed to get system fonts: {:?}", e);
+            Err(format!("Failed to get system fonts: {:?}", e))
+        }
+    }
 }
