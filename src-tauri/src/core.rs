@@ -1,6 +1,6 @@
 use etcd_client::{Client, Error, GetOptions};
 
-use crate::client::{should_refresh, Item};
+use crate::client::{Item, should_refresh};
 use crate::state::AppState;
 
 async fn perform_op<T, F, Fut>(state: &mut AppState, f: F) -> Result<T, String>
@@ -32,13 +32,17 @@ pub async fn list_keys(prefix: &str, state: &mut AppState) -> Result<Vec<Item>, 
                     .take_kvs()
                     .into_iter()
                     .filter_map(|kv| {
-                        let (key, value) = kv.into_key_value();
-                        if let (Ok(key_str), Ok(value_str)) =
-                            (std::str::from_utf8(&key), std::str::from_utf8(&value))
-                        {
+                        if let (Ok(key_str), Ok(value_str)) = (
+                            std::str::from_utf8(kv.key()),
+                            std::str::from_utf8(kv.value()),
+                        ) {
                             Some(Item {
                                 key: key_str.to_owned(),
                                 value: value_str.to_owned(),
+                                version: kv.version(),
+                                create_revision: kv.create_revision(),
+                                mod_revision: kv.mod_revision(),
+                                lease: kv.lease(),
                             })
                         } else {
                             None
@@ -115,6 +119,10 @@ pub async fn get_values_in_range(
                             (Ok(key_str), Ok(value_str)) => Some(Item {
                                 key: key_str.to_owned(),
                                 value: value_str.to_owned(),
+                                version: kv.version(),
+                                create_revision: kv.create_revision(),
+                                mod_revision: kv.mod_revision(),
+                                lease: kv.lease(),
                             }),
                             _ => None,
                         }
@@ -153,7 +161,40 @@ pub async fn get_cluster_members(state: &mut AppState) -> Result<Vec<etcd_client
 }
 
 /// Get cluster status for a specific endpoint
-pub async fn get_cluster_status(state: &mut AppState) -> Result<etcd_client::StatusResponse, String> {
-    perform_op(state, |mut client| async move { client.status().await })
-        .await
+pub async fn get_cluster_status(
+    state: &mut AppState,
+) -> Result<etcd_client::StatusResponse, String> {
+    perform_op(state, |mut client| async move { client.status().await }).await
+}
+
+/// Get a key's value at a specific revision
+pub async fn get_key_at_revision(
+    key: &str,
+    revision: i64,
+    state: &mut AppState,
+) -> Result<Option<Item>, String> {
+    perform_op(state, |mut client| async move {
+        client
+            .get(key, Some(GetOptions::new().with_revision(revision)))
+            .await
+            .map(|mut response| {
+                if let Some(kv) = response.take_kvs().into_iter().next() {
+                    if let (Ok(key_str), Ok(value_str)) = (
+                        std::str::from_utf8(kv.key()),
+                        std::str::from_utf8(kv.value()),
+                    ) {
+                        return Some(Item {
+                            key: key_str.to_owned(),
+                            value: value_str.to_owned(),
+                            version: kv.version(),
+                            create_revision: kv.create_revision(),
+                            mod_revision: kv.mod_revision(),
+                            lease: kv.lease(),
+                        });
+                    }
+                }
+                None
+            })
+    })
+    .await
 }

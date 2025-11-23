@@ -26,7 +26,7 @@ import {
 import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
 import { TbEdit, TbEye } from "react-icons/tb";
 import { Tooltip } from "../../components/ui/tooltip";
-import { AppConfig, savePathToHistory, getPathHistory } from "../../api/etcd";
+import { AppConfig, savePathToHistory, getPathHistory, EtcdItem } from "../../api/etcd";
 import AddKeyDialog from "../dialogs/AddKeyDialog";
 import DeleteKeyDialog from "../dialogs/DeleteKeyDialog";
 import EditKeyDialog from "../dialogs/EditKeyDialog";
@@ -146,6 +146,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     action: "add" | "edit" | "delete" | "view",
     key: string,
     value: string,
+    item?: EtcdItem
   } | null>(null);
 
   // Load path history
@@ -371,7 +372,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                           children={<TbEye />}
                           size="sm"
                           variant="ghost"
-                          onClick={() => setDialogState({ action: "view", key: item.key, value: item.value })}
+                          onClick={() => setDialogState({ action: "view", key: item.key, value: item.value, item })}
                         />
                       </Tooltip>
                       <Tooltip content="Edit key" showArrow>
@@ -542,6 +543,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         <ViewValueDialog
           keyToView={dialogState.key}
           valueToView={dialogState.value}
+          item={dialogState.item}
           onClose={() => setDialogState(null)}
         />
       )}

@@ -6,6 +6,10 @@ import { invoke } from '@tauri-apps/api/core';
 export interface EtcdItem {
     key: string;
     value: string;
+    version: number;
+    create_revision: number;
+    mod_revision: number;
+    lease: number;
 }
 
 /**
@@ -280,5 +284,19 @@ export async function getSystemFonts(): Promise<string[]> {
     } catch (error) {
         console.error('Error getting system fonts:', error);
         return [];
+    }
+}
+
+/**
+ * Get a key's value at a specific revision
+ * @param key The key to fetch
+ * @param revision The revision to fetch at
+ */
+export async function getKeyAtRevision(key: string, revision: number): Promise<EtcdItem | null> {
+    try {
+        return await invoke<EtcdItem | null>('get_key_at_revision', { key, revision });
+    } catch (error) {
+        console.error('Error getting key at revision:', error);
+        throw error;
     }
 }

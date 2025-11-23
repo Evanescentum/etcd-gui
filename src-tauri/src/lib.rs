@@ -421,7 +421,8 @@ pub fn run() {
             open_devtools,
             save_path_history,
             get_path_history,
-            get_system_fonts
+            get_system_fonts,
+            get_key_at_revision
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));
@@ -453,4 +454,20 @@ async fn get_system_fonts() -> Result<Vec<String>, String> {
             Err(format!("Failed to get system fonts: {:?}", e))
         }
     }
+}
+
+#[tauri::command]
+async fn get_key_at_revision(
+    key: String,
+    revision: i64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<client::Item>, String> {
+    log::debug!("Getting key {} at revision {}", key, revision);
+    let mut state = state.lock().await;
+    core::get_key_at_revision(&key, revision, &mut state)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get key at revision: {}", e);
+            e
+        })
 }

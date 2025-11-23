@@ -8,6 +8,10 @@ use crate::config::Profile;
 pub struct Item {
     pub key: String,
     pub value: String,
+    pub version: i64,
+    pub create_revision: i64,
+    pub mod_revision: i64,
+    pub lease: i64,
 }
 
 pub async fn new_connect(profile: &Profile) -> Result<etcd_client::Client, String> {
