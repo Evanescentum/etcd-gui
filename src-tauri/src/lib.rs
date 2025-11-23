@@ -383,6 +383,46 @@ fn read_history_file(path: &PathBuf) -> Result<HashMap<String, Vec<String>>, std
         .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
 }
 
+#[tauri::command]
+async fn get_system_fonts() -> Result<Vec<String>, String> {
+    log::debug!("Getting system fonts");
+    let source = font_kit::source::SystemSource::new();
+    match source.all_fonts() {
+        Ok(handles) => {
+            let mut fonts: Vec<String> = handles
+                .into_iter()
+                .filter_map(|handle| handle.load().ok().map(|font| font.family_name()))
+                .collect();
+
+            // Deduplicate and sort
+            fonts.sort();
+            fonts.dedup();
+
+            Ok(fonts)
+        }
+        Err(e) => {
+            log::error!("Failed to get system fonts: {:?}", e);
+            Err(format!("Failed to get system fonts: {:?}", e))
+        }
+    }
+}
+
+#[tauri::command]
+async fn get_key_at_revision(
+    key: String,
+    revision: i64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Option<client::Item>, String> {
+    log::debug!("Getting key {} at revision {}", key, revision);
+    let mut state = state.lock().await;
+    core::get_key_at_revision(&key, revision, &mut state)
+        .await
+        .map_err(|e| {
+            log::error!("Failed to get key at revision: {}", e);
+            e
+        })
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -430,44 +470,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-#[tauri::command]
-async fn get_system_fonts() -> Result<Vec<String>, String> {
-    log::debug!("Getting system fonts");
-    let source = font_kit::source::SystemSource::new();
-    match source.all_fonts() {
-        Ok(handles) => {
-            let mut fonts: Vec<String> = handles
-                .into_iter()
-                .filter_map(|handle| handle.load().ok().map(|font| font.family_name()))
-                .collect();
-
-            // Deduplicate and sort
-            fonts.sort();
-            fonts.dedup();
-
-            Ok(fonts)
-        }
-        Err(e) => {
-            log::error!("Failed to get system fonts: {:?}", e);
-            Err(format!("Failed to get system fonts: {:?}", e))
-        }
-    }
-}
-
-#[tauri::command]
-async fn get_key_at_revision(
-    key: String,
-    revision: i64,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<Option<client::Item>, String> {
-    log::debug!("Getting key {} at revision {}", key, revision);
-    let mut state = state.lock().await;
-    core::get_key_at_revision(&key, revision, &mut state)
-        .await
-        .map_err(|e| {
-            log::error!("Failed to get key at revision: {}", e);
-            e
-        })
 }
