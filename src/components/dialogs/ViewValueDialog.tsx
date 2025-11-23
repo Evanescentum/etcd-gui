@@ -5,6 +5,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toaster } from "../ui/toaster";
 import { LuCopy, LuHistory, LuChevronLeft, LuChevronRight, LuChevronsRight } from "react-icons/lu";
 import { EtcdItem, getKeyAtRevision } from "../../api/etcd";
+import { useDebounce } from "use-debounce";
 
 interface ViewValueDialogProps {
     keyToView: string;
@@ -18,6 +19,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
     const [historyStack, setHistoryStack] = useState<EtcdItem[]>([]);
     const [historyIndex, setHistoryIndex] = useState(0);
     const [loadingHistory, setLoadingHistory] = useState(false);
+    const [showSpinner] = useDebounce(loadingHistory, 200);
 
     // Initialize history stack with current item
     useEffect(() => {
@@ -285,7 +287,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                                 </IconButton>
                                             </HStack>
                                             <Box borderWidth="1px" borderRadius="md" p={3} bg="bg.subtle" position="relative">
-                                                {loadingHistory && (
+                                                {loadingHistory && showSpinner && (
                                                     <Flex position="absolute" inset={0} bg="whiteAlpha.800" align="center" justify="center" zIndex={1}>
                                                         <Spinner size="sm" />
                                                     </Flex>
