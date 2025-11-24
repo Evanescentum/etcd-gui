@@ -387,13 +387,8 @@ fn read_history_file(path: &PathBuf) -> Result<HashMap<String, Vec<String>>, std
 async fn get_system_fonts() -> Result<Vec<String>, String> {
     log::debug!("Getting system fonts");
     let source = font_kit::source::SystemSource::new();
-    match source.all_fonts() {
-        Ok(handles) => {
-            let mut fonts: Vec<String> = handles
-                .into_iter()
-                .filter_map(|handle| handle.load().ok().map(|font| font.family_name()))
-                .collect();
-
+    match source.all_families() {
+        Ok(mut fonts) => {
             // Deduplicate and sort
             fonts.sort();
             fonts.dedup();
