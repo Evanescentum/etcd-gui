@@ -312,6 +312,7 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
                                       fontFamily={item.value || "system-ui, sans-serif"}
                                     >
                                       {item.label}
+                                      <Select.ItemIndicator />
                                     </Select.Item>
                                   ))}
                                 </Select.Content>
