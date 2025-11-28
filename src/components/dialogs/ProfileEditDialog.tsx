@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { HiX } from "react-icons/hi";
 import { LuTrash2, LuPlus, LuLockOpen, LuLock, LuRefreshCw } from "react-icons/lu";
 import { useColorModeValue } from "../ui/color-mode";
+import { codeInputProps } from "@/utils/inputProps";
 import { PasswordInput } from "../ui/password-input";
 import { toaster } from "../ui/toaster";
 import { Tooltip } from "../ui/tooltip";
@@ -164,6 +165,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                             <Box>
                                 <Text fontWeight="medium" mb={1}>Profile Name</Text>
                                 <Input
+                                    {...codeInputProps}
                                     value={editedProfile.name}
                                     onChange={(e) => setEditedProfile({ ...editedProfile, name: e.target.value })}
                                     placeholder="Enter profile name"
@@ -176,6 +178,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                                     {editedProfile.endpoints.map((endpoint, index) => (
                                         <Flex key={index} gap={2}>
                                             <Input
+                                                {...codeInputProps}
                                                 flex={3}
                                                 value={endpoint.host}
                                                 onChange={(e) => updateEndpoint(index, 'host', e.target.value)}
@@ -183,6 +186,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                                             />
                                             <Field.Root invalid={!!validationErrors.port} flex={1}>
                                                 <Input
+                                                    {...codeInputProps}
                                                     value={endpoint.port}
                                                     onChange={(e) => {
                                                         const value = parseInt(e.target.value, 10);
@@ -237,6 +241,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                                     <Box>
                                         <Text fontWeight="medium" mb={1}>Username</Text>
                                         <Input
+                                            {...codeInputProps}
                                             value={editedProfile.user?.[0] || ""}
                                             onChange={(e) => setEditedProfile({
                                                 ...editedProfile,
@@ -264,6 +269,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                             <Field.Root invalid={!!validationErrors.timeout}>
                                 <Field.Label>Timeout (ms)</Field.Label>
                                 <Input
+                                    {...codeInputProps}
                                     value={editedProfile.timeout_ms === undefined ? '' : editedProfile.timeout_ms}
                                     onChange={(e) => {
                                         const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
@@ -283,6 +289,7 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
                             <Field.Root invalid={!!validationErrors.connectTimeout}>
                                 <Field.Label>Connection Timeout (ms)</Field.Label>
                                 <Input
+                                    {...codeInputProps}
                                     value={editedProfile.connect_timeout_ms === undefined ? '' : editedProfile.connect_timeout_ms}
                                     onChange={(e) => {
                                         const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);

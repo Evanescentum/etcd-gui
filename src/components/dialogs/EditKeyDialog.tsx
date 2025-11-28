@@ -1,5 +1,6 @@
 import { useState, ChangeEvent } from "react";
 import { Button, CloseButton, Dialog, Field, Input, VStack, Box, Textarea, Text } from "@chakra-ui/react";
+import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { putEtcdItem } from "@/api/etcd";
 import { HiX } from "react-icons/hi";
@@ -53,7 +54,7 @@ function EditKeyDialog({
                                 </Field.Label>
                                 <Box position="relative">
                                     <Input
-                                        fontFamily="mono"
+                                        {...codeInputProps}
                                         value={dialogKey}
                                         onChange={(e) => setDialogKey(e.target.value)}
                                         placeholder="Enter key path"
@@ -84,8 +85,8 @@ function EditKeyDialog({
                                     Value <Field.RequiredIndicator />
                                 </Field.Label>
                                 <Textarea
+                                    {...codeInputProps}
                                     placeholder="Enter value (string, JSON, etc.)"
-                                    fontFamily="mono"
                                     autoresize
                                     value={dialogValue}
                                     onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDialogValue(e.target.value)}

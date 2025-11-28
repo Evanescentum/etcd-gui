@@ -28,7 +28,7 @@ export interface PasswordVisibilityProps {
 
 export interface PasswordInputProps
   extends InputProps,
-    PasswordVisibilityProps {
+  PasswordVisibilityProps {
   rootProps?: GroupProps
 }
 
@@ -74,6 +74,9 @@ export const PasswordInput = React.forwardRef<
         {...rest}
         ref={mergeRefs(ref, inputRef)}
         type={visible ? "text" : "password"}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={false}
       />
     </InputGroup>
   )

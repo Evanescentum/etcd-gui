@@ -18,6 +18,7 @@ import {
     Select,
     Portal,
 } from "@chakra-ui/react";
+import { codeInputProps } from "@/utils/inputProps";
 import { LuTriangleAlert, LuPause, LuPlay, LuTrash2, LuArrowDown, LuBrackets, LuSearch } from "react-icons/lu";
 import { attachLogger } from "@tauri-apps/plugin-log"
 import { useStickToBottom } from "use-stick-to-bottom";
@@ -228,6 +229,7 @@ function Logs() {
                 </Select.Root>
                 <InputGroup startElement={<LuSearch />} width="250px" marginEnd={4}>
                     <Input
+                        {...codeInputProps}
                         size="sm"
                         placeholder="Filter logs..."
                         value={filterQuery}

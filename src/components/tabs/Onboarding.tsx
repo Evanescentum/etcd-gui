@@ -15,6 +15,7 @@ import {
   Steps,
   useSteps,
 } from "@chakra-ui/react";
+import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { LuPlus, LuTrash2, LuArrowRight, LuChevronLeft, LuChevronsRight, LuRefreshCw, LuCheck, LuCircleAlert } from "react-icons/lu";
 import { updateConfig, testConnection } from "../../api/etcd";
@@ -229,6 +230,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                 <Field.Root>
                   <Field.Label>Profile Name</Field.Label>
                   <Input
+                    {...codeInputProps}
                     value={profile.name}
                     onChange={(e) => setProfile({ ...profile, name: e.target.value })}
                     placeholder="Enter profile name"
@@ -244,6 +246,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                     {profile.endpoints.map((endpoint, index) => (
                       <Flex key={index} gap={2}>
                         <Input
+                          {...codeInputProps}
                           flex={3}
                           value={endpoint.host}
                           onChange={(e) => updateEndpoint(index, 'host', e.target.value)}
@@ -251,6 +254,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                         />
                         <Field.Root invalid={!!validationErrors.port} flex={1}>
                           <Input
+                            {...codeInputProps}
                             value={endpoint.port}
                             onChange={(e) => {
                               const value = parseInt(e.target.value, 10);
@@ -311,6 +315,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                       <Field.Root>
                         <Field.Label>Username</Field.Label>
                         <Input
+                          {...codeInputProps}
                           value={profile.user?.[0] || ""}
                           onChange={(e) => setProfile({
                             ...profile,
@@ -322,6 +327,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                       <Field.Root>
                         <Field.Label>Password</Field.Label>
                         <Input
+                          {...codeInputProps}
                           type="password"
                           value={profile.user?.[1] || ""}
                           onChange={(e) => setProfile({
@@ -343,6 +349,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                 <Field.Root invalid={!!validationErrors.timeout}>
                   <Field.Label>Timeout (ms)</Field.Label>
                   <Input
+                    {...codeInputProps}
                     value={profile.timeout_ms === undefined ? '' : profile.timeout_ms}
                     onChange={(e) => {
                       const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
@@ -365,6 +372,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                 <Field.Root invalid={!!validationErrors.connectTimeout}>
                   <Field.Label>Connection Timeout (ms)</Field.Label>
                   <Input
+                    {...codeInputProps}
                     value={profile.connect_timeout_ms === undefined ? '' : profile.connect_timeout_ms}
                     onChange={(e) => {
                       const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);

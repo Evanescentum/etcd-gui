@@ -23,6 +23,7 @@ import {
   Portal,
   createListCollection
 } from "@chakra-ui/react";
+import { codeInputProps } from "@/utils/inputProps";
 import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
 import { TbEdit, TbEye } from "react-icons/tb";
 import { Tooltip } from "../../components/ui/tooltip";
@@ -33,7 +34,7 @@ import EditKeyDialog from "../dialogs/EditKeyDialog";
 import ViewValueDialog from "../dialogs/ViewValueDialog";
 import { useDebounce } from "use-debounce";
 
-// 表格单元格中的 Tooltip 组件
+// Tooltip component for table cells
 const TableRowTooltip = ({
   content,
   maxWidth,
@@ -75,11 +76,11 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   const [pageSize, setPageSize] = useState(5);
   const pageSizeCollection = createListCollection({
     items: [
-      { label: "5/页", value: "5" },
-      { label: "10/页", value: "10" },
-      { label: "20/页", value: "20" },
-      { label: "50/页", value: "50" },
-      { label: "100/页", value: "100" },
+      { label: "5/page", value: "5" },
+      { label: "10/page", value: "10" },
+      { label: "20/page", value: "20" },
+      { label: "50/page", value: "50" },
+      { label: "100/page", value: "100" },
     ]
   });
   // Step 1: keys-only list for counts and pagination
@@ -221,8 +222,8 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
               <Box position="relative" flex="1" ref={dropdownRef}>
                 <InputGroup>
                   <Input
+                    {...codeInputProps}
                     ref={pathInputRef}
-                    fontFamily="mono"
                     value={keyPrefix}
                     onChange={(e) => setKeyPrefix(e.target.value)}
                     onFocus={() => pathHistory.length > 0 && setShowPathSuggestions(true)}
@@ -297,7 +298,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                 </Box>
                 <InputGroup endElement={searchEndElement} flex="1">
                   <Input
-                    fontFamily="mono"
+                    {...codeInputProps}
                     placeholder="Search keys..."
                     value={searchQuery}
                     onChange={(e) => {
@@ -429,7 +430,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           <Select.HiddenSelect />
           <Select.Control>
             <Select.Trigger>
-              <Select.ValueText placeholder="分页大小" />
+              <Select.ValueText placeholder="Page size" />
             </Select.Trigger>
             <Select.IndicatorGroup>
               <Select.Indicator />

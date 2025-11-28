@@ -1,6 +1,7 @@
 import { useState, ChangeEvent } from "react";
 import { putEtcdItem } from "../../api/etcd";
 import { Button, CloseButton, Dialog, Field, Input, Textarea, VStack } from "@chakra-ui/react";
+import { codeInputProps } from "@/utils/inputProps";
 
 import { HiX } from "react-icons/hi";
 import { useMutation } from "@tanstack/react-query";
@@ -51,7 +52,7 @@ function AddKeyDialog({
                                     Key <Field.RequiredIndicator />
                                 </Field.Label>
                                 <Input
-                                    fontFamily="mono"
+                                    {...codeInputProps}
                                     value={dialogNewKey}
                                     onChange={(e) => setDialogNewKey(e.target.value)}
                                     placeholder="Enter key path (e.g. /config/app)"
@@ -63,9 +64,9 @@ function AddKeyDialog({
                                     Value <Field.RequiredIndicator />
                                 </Field.Label>
                                 <Textarea
+                                    {...codeInputProps}
                                     placeholder="Enter value (string, JSON, etc.)"
                                     autoresize
-                                    fontFamily="mono"
                                     value={dialogNewValue}
                                     onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDialogNewValue(e.target.value)}
                                 />
