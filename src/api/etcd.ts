@@ -228,6 +228,21 @@ export async function getPathHistory(profileName: string): Promise<string[]> {
 }
 
 /**
+ * Delete a path from the history
+ * @param path The path to delete
+ * @param profileName The current profile name
+ * @returns Updated array of path strings
+ */
+export async function deletePathFromHistory(path: string, profileName: string): Promise<string[]> {
+    try {
+        return await invoke<string[]>('delete_path_history', { path, profileName });
+    } catch (error) {
+        console.error('Error deleting path from history:', error);
+        throw error;
+    }
+}
+
+/**
  * Open the webview developer tools/console
  */
 export async function openDevtools(): Promise<void> {

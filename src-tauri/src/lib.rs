@@ -355,6 +355,59 @@ async fn get_path_history(
     }
 }
 
+#[tauri::command]
+async fn delete_path_history(
+    path: String,
+    profile_name: String,
+    app_handle: tauri::AppHandle,
+) -> Result<Vec<String>, String> {
+    log::debug!(
+        "Deleting path from history for profile {}: {}",
+        profile_name,
+        path
+    );
+    let history_path = get_history_file_path(&app_handle)?;
+
+    // Read existing history map
+    let mut history_map: HashMap<String, Vec<String>> = match read_history_file(&history_path) {
+        Ok(h) => h,
+        Err(_) => HashMap::new(),
+    };
+
+    // Get or create history for this profile
+    let history = history_map
+        .entry(profile_name.clone())
+        .or_insert_with(Vec::new);
+
+    // Remove the path from history
+    history.retain(|p| p != &path);
+
+    let res = history.clone();
+
+    // Write back to file
+    let mut file = OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open(&history_path)
+        .map_err(|e| {
+            log::error!("Failed to open history file: {}", e);
+            format!("Failed to open history file: {e}")
+        })?;
+
+    let content = serde_json::to_string(&history_map).map_err(|e| {
+        log::error!("Failed to serialize history: {}", e);
+        format!("Failed to serialize history: {e}")
+    })?;
+
+    file.write_all(content.as_bytes()).map_err(|e| {
+        log::error!("Failed to write history: {}", e);
+        format!("Failed to write history: {e}")
+    })?;
+
+    Ok(res)
+}
+
 fn get_history_file_path(app_handle: &tauri::AppHandle) -> Result<PathBuf, String> {
     let app_dir = app_handle
         .path()
@@ -456,6 +509,7 @@ pub fn run() {
             open_devtools,
             save_path_history,
             get_path_history,
+            delete_path_history,
             get_system_fonts,
             get_key_at_revision
         ])

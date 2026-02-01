@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo } from "react";
 import { useEtcdKeysOnlyQuery, useEtcdValuesInRangeQuery } from "../../hooks/useEtcdQuery";
 import {
   Box,
@@ -24,14 +24,15 @@ import {
   createListCollection
 } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
-import { LuPlus, LuTrash2, LuRefreshCw, LuSearch, LuFolder, LuChevronLeft, LuChevronRight, LuHistory } from "react-icons/lu";
+import { LuPlus, LuTrash2, LuSearch, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { TbEdit, TbEye } from "react-icons/tb";
 import { Tooltip } from "../../components/ui/tooltip";
-import { AppConfig, savePathToHistory, getPathHistory, EtcdItem } from "../../api/etcd";
+import { AppConfig, EtcdItem } from "../../api/etcd";
 import AddKeyDialog from "../dialogs/AddKeyDialog";
 import DeleteKeyDialog from "../dialogs/DeleteKeyDialog";
 import EditKeyDialog from "../dialogs/EditKeyDialog";
 import ViewValueDialog from "../dialogs/ViewValueDialog";
+import PathInput from "../PathInput";
 import { useDebounce } from "use-debounce";
 
 // Tooltip component for table cells
@@ -119,28 +120,6 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   const loadError = (isKeysError ? (typeof keysError === "string" ? keysError : (keysError instanceof Error ? keysError.message : "Unknown error")) : null)
     || (isValuesError ? (typeof valuesError === "string" ? valuesError : (valuesError instanceof Error ? valuesError.message : "Unknown error")) : null);
 
-  // Path history state
-  const [pathHistory, setPathHistory] = useState<string[]>([]);
-  const pathHistoryFilteredByPrefix = useMemo(() => {
-    return pathHistory.filter(path => path.startsWith(keyPrefix));
-  }, [pathHistory, keyPrefix]);
-  const [showPathSuggestions, setShowPathSuggestions] = useState(false);
-  const pathInputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setShowPathSuggestions(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [dropdownRef]);
-
 
   // Dialog state
   const [dialogState, setDialogState] = useState<{
@@ -150,23 +129,10 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     item?: EtcdItem
   } | null>(null);
 
-  // Load path history
-  useEffect(() => {
-    async function loadPathHistory() {
-      try {
-        setPathHistory(await getPathHistory(currentProfileName ?? ""));
-      } catch (error) {
-        console.error('Failed to load path history:', error);
-      }
-    }
-    loadPathHistory();
-  }, [currentProfileName]);
-
   // Manual refresh
   const handleManualRefresh = async () => {
     await refetchKeys();
     await refetchValues();
-    if (keyPrefix !== "") setPathHistory(await savePathToHistory(keyPrefix, currentProfileName ?? ""));
   };
 
   // Pagination
@@ -174,15 +140,6 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     const set = new Set(pageKeys);
     return pageRangeItems.filter(i => set.has(i.key)); // In case of getting extra keys during value fetching
   }, [pageRangeItems, pageKeys]);
-
-  // Handle path selection from dropdown
-  const handleSelectPath = async (path: string) => {
-    setKeyPrefix(path);
-    setShowPathSuggestions(false);
-    setPathHistory(await savePathToHistory(path, currentProfileName ?? ""));
-    setCurrentPage(1);
-    await refetchKeys();
-  };
 
   // Define the end element for search input
   const searchEndElement = searchQuery ? (
@@ -215,80 +172,16 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         <Box p={4} borderBottomWidth="1px">
           <VStack gap={4}>
             {/* Path navigation and refresh button */}
-            <Flex width="full" align="center" gap={2} position="relative">
-              <Box borderWidth="1px" borderRadius="md" p={2}>
-                <LuFolder />
-              </Box>
-              <Box position="relative" flex="1" ref={dropdownRef}>
-                <InputGroup>
-                  <Input
-                    {...codeInputProps}
-                    ref={pathInputRef}
-                    value={keyPrefix}
-                    onChange={(e) => setKeyPrefix(e.target.value)}
-                    onFocus={() => pathHistory.length > 0 && setShowPathSuggestions(true)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter') {
-                        handleManualRefresh();
-                        setShowPathSuggestions(false);
-                      }
-                    }}
-                    placeholder="Key prefix"
-                    flex="1"
-                  />
-                </InputGroup>
-
-                {pathHistory.length > 0 && (
-                  <Box position="absolute" right="8px" top="50%" transform="translateY(-50%)" zIndex={2}>
-                    <Tooltip content="Show history" showArrow>
-                      <IconButton
-                        aria-label="Path history"
-                        children={<LuHistory />}
-                        onClick={() => setShowPathSuggestions(!showPathSuggestions)}
-                        size="sm"
-                        variant="ghost"
-                      />
-                    </Tooltip>
-                  </Box>
-                )}
-
-                {/* Path suggestions dropdown */}
-                {showPathSuggestions && pathHistoryFilteredByPrefix.length > 0 && (
-                  <Box
-                    position="absolute"
-                    top="100%"
-                    left={0}
-                    right={0}
-                    mt={1}
-                    zIndex={10}
-                    bg="bg.panel"
-                    borderWidth="thin"
-                    borderRadius="md"
-                    boxShadow="md"
-                    maxH="10rem"
-                    overflowY="auto"
-                  >
-                    {pathHistoryFilteredByPrefix.map((path, index) => (
-                      <Box
-                        key={index}
-                        p={2}
-                        cursor="pointer"
-                        _hover={{ bg: "bg.solid" }}
-                        onClick={() => handleSelectPath(path)}
-                        fontFamily="mono"
-                        fontSize="sm"
-                      >
-                        {path}
-                      </Box>
-                    ))}
-                  </Box>
-                )}
-              </Box>
-
-              <Button onClick={handleManualRefresh} loading={delayedLoading} width="7rem">
-                <LuRefreshCw />Refresh
-              </Button>
-            </Flex>
+            <PathInput
+              value={keyPrefix}
+              onChange={(value) => {
+                setKeyPrefix(value);
+                setCurrentPage(1);
+              }}
+              profileName={currentProfileName}
+              onRefresh={handleManualRefresh}
+              loading={delayedLoading}
+            />
 
             {/* Search and actions */}
             <Flex width="full" gap={2}>
