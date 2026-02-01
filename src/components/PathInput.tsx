@@ -6,6 +6,7 @@ import {
     Button,
     Portal,
     Combobox,
+    ScrollArea,
     useListCollection,
     useFilter,
 } from "@chakra-ui/react";
@@ -131,24 +132,31 @@ function PathInput({
                 </Combobox.Control>
                 <Portal>
                     <Combobox.Positioner>
-                        <Combobox.Content maxH="15rem" overflowY="auto" boxShadow="2xl">
-                            <Combobox.Empty>No history</Combobox.Empty>
-                            {pathHistoryCollection.items.map((item) => (
-                                <Combobox.Item key={item.value} item={item}>
-                                    <Combobox.ItemText fontFamily="mono" fontSize="sm" flex="1">
-                                        {item.label}
-                                    </Combobox.ItemText>
-                                    <IconButton
-                                        aria-label="Delete from history"
-                                        size="sm"
-                                        variant="ghost"
-                                        colorPalette="red"
-                                        onClick={(e) => handleDeletePathFromHistory(e, item.value)}
-                                    >
-                                        <LuX />
-                                    </IconButton>
-                                </Combobox.Item>
-                            ))}
+                        <Combobox.Content boxShadow="2xl">
+                            <ScrollArea.Root maxH="15rem">
+                                <ScrollArea.Viewport>
+                                    <ScrollArea.Content>
+                                        <Combobox.Empty>No history</Combobox.Empty>
+                                        {pathHistoryCollection.items.map((item) => (
+                                            <Combobox.Item key={item.value} item={item}>
+                                                <Combobox.ItemText fontFamily="mono" fontSize="sm" flex="1">
+                                                    {item.label}
+                                                </Combobox.ItemText>
+                                                <IconButton
+                                                    marginEnd={2}
+                                                    size="sm"
+                                                    variant="ghost"
+                                                    colorPalette="red"
+                                                    onClick={(e) => handleDeletePathFromHistory(e, item.value)}
+                                                >
+                                                    <LuX />
+                                                </IconButton>
+                                            </Combobox.Item>
+                                        ))}
+                                    </ScrollArea.Content>
+                                </ScrollArea.Viewport>
+                                <ScrollArea.Scrollbar />
+                            </ScrollArea.Root>
                         </Combobox.Content>
                     </Combobox.Positioner>
                 </Portal>
