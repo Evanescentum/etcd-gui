@@ -106,15 +106,17 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   }, [filteredKeys, currentPage, pageSize]);
 
   // Step 2: fetch values for range [firstKey, lastKey] on the current page
-  const firstKey = pageKeys[0];
-  const lastKey = pageKeys[pageKeys.length - 1];
   const {
     data: pageRangeItems = [],
     isError: isValuesError,
     error: valuesError,
-    refetch: refetchValues,
     isFetching: isFetchingValues,
-  } = useEtcdValuesInRangeQuery({ startKey: firstKey, endKey: lastKey, currentProfileName, enabled: !configLoading && pageKeys.length > 0 });
+  } = useEtcdValuesInRangeQuery({
+    startKey: pageKeys[0],
+    endKey: pageKeys[pageKeys.length - 1],
+    currentProfileName,
+    enabled: !configLoading && pageKeys.length > 0,
+  });
   // Add delayed loading state to prevent UI flashing for quick operations
   const [delayedLoading] = useDebounce(isFetchingKeys || isFetchingValues, 800);
   const loadError = (isKeysError ? (typeof keysError === "string" ? keysError : (keysError instanceof Error ? keysError.message : "Unknown error")) : null)
@@ -128,12 +130,6 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     value: string,
     item?: EtcdItem
   } | null>(null);
-
-  // Manual refresh
-  const handleManualRefresh = async () => {
-    await refetchKeys();
-    await refetchValues();
-  };
 
   // Pagination
   const paginatedData = useMemo(() => {
@@ -179,7 +175,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                 setCurrentPage(1);
               }}
               profileName={currentProfileName}
-              onRefresh={handleManualRefresh}
+              onRefresh={refetchKeys}
               loading={delayedLoading}
             />
 
@@ -408,7 +404,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         <AddKeyDialog
           defaultKeyPrefix={keyPrefix}
           onClose={() => setDialogState(null)}
-          refetch={() => { refetchKeys(); refetchValues(); }}
+          refetch={refetchKeys}
         />
       )}
 
@@ -418,7 +414,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={() => { refetchKeys(); refetchValues(); }}
+          refetch={refetchKeys}
         />
       )}
 
@@ -428,7 +424,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           keyToDelete={dialogState.key}
           valueToDelete={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={() => { refetchKeys(); refetchValues(); }}
+          refetch={refetchKeys}
         />
       )}
 

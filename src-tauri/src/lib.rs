@@ -21,13 +21,13 @@ use tokio::sync::Mutex;
 async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
     log::info!("Initializing etcd client...");
     let _ = state.lock().await.etcd_client.take(); // Reset the client if it exists
-    let res = state.lock().await.init_client().await;
-    if let Err(ref e) = res {
-        log::error!("Failed to initialize client: {}", e);
-    } else {
-        log::info!("Etcd client initialized successfully");
-    }
-    res
+    state
+        .lock()
+        .await
+        .init_client()
+        .await
+        .inspect(|_| log::info!("Etcd client initialized successfully"))
+        .inspect_err(|e| log::error!("Failed to initialize client: {}", e))
 }
 
 #[tauri::command]
@@ -38,10 +38,9 @@ async fn list_keys(
     log::debug!("Listing keys with prefix: {}", prefix);
     // Call the client function with the provided prefix
     let mut state = state.lock().await;
-    core::list_keys(&prefix, &mut state).await.map_err(|e| {
-        log::error!("Failed to list keys: {}", e);
-        e
-    })
+    core::list_keys(&prefix, &mut state)
+        .await
+        .inspect_err(|e| log::error!("Failed to list keys: {}", e))
 }
 
 #[tauri::command]
@@ -53,10 +52,8 @@ async fn list_keys_only(
     let mut state = state.lock().await;
     core::list_keys_only(&prefix, &mut state)
         .await
-        .map_err(|e| {
-            log::error!("Failed to list keys only: {}", e);
-            e
-        })
+        .inspect(|v| log::info!("Found {} keys with prefix {}", v.len(), prefix))
+        .inspect_err(|e| log::error!("Failed to list keys only: {}", e))
 }
 
 #[tauri::command]
@@ -69,10 +66,7 @@ async fn get_values_in_range(
     let mut state = state.lock().await;
     core::get_values_in_range(&start_key, &end_inclusive, &mut state)
         .await
-        .map_err(|e| {
-            log::error!("Failed to get values in range: {}", e);
-            e
-        })
+        .inspect_err(|e| log::error!("Failed to get values in range: {}", e))
 }
 
 #[tauri::command]
@@ -84,10 +78,9 @@ async fn put_key(
     log::info!("Putting key: {}", key);
     let mut state = state.lock().await;
     state.app_config.ensure_current_profile_unlocked()?;
-    core::put_key(&key, &value, &mut state).await.map_err(|e| {
-        log::error!("Failed to put key {}: {}", key, e);
-        e
-    })
+    core::put_key(&key, &value, &mut state)
+        .await
+        .inspect_err(|e| log::error!("Failed to put key {}: {}", key, e))
 }
 
 #[tauri::command]
@@ -95,10 +88,9 @@ async fn delete_key(key: String, state: State<'_, Mutex<AppState>>) -> Result<()
     log::info!("Deleting key: {}", key);
     let mut state = state.lock().await;
     state.app_config.ensure_current_profile_unlocked()?;
-    core::delete_key(&key, &mut state).await.map_err(|e| {
-        log::error!("Failed to delete key {}: {}", key, e);
-        e
-    })
+    core::delete_key(&key, &mut state)
+        .await
+        .inspect_err(|e| log::error!("Failed to delete key {}: {}", key, e))
 }
 
 #[tauri::command]
@@ -107,16 +99,14 @@ async fn get_cluster_info(state: State<'_, Mutex<AppState>>) -> Result<ClusterIn
     let mut state = state.lock().await;
 
     // Get cluster members
-    let members = core::get_cluster_members(&mut state).await.map_err(|e| {
-        log::error!("Failed to get cluster members: {}", e);
-        e
-    })?;
+    let members = core::get_cluster_members(&mut state)
+        .await
+        .inspect_err(|e| log::error!("Failed to get cluster members: {}", e))?;
 
     // Get cluster status
-    let status = core::get_cluster_status(&mut state).await.map_err(|e| {
-        log::error!("Failed to get cluster status: {}", e);
-        e
-    })?;
+    let status = core::get_cluster_status(&mut state)
+        .await
+        .inspect_err(|e| log::error!("Failed to get cluster status: {}", e))?;
 
     // Convert members to serializable format
     let members_info: Vec<MemberInfo> = members
@@ -232,11 +222,9 @@ async fn test_connection(profile: config::Profile) -> Result<String, String> {
     client
         .status()
         .await
+        .inspect_err(|e| log::error!("Connection test failed: {}", e))
         .map(|status| status.version().to_string())
-        .map_err(|e| {
-            log::error!("Connection test failed: {}", e);
-            e.to_string()
-        })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -324,20 +312,16 @@ async fn save_path_history(
         .truncate(true)
         .create(true)
         .open(&history_path)
-        .map_err(|e| {
-            log::error!("Failed to open history file: {}", e);
-            format!("Failed to open history file: {e}")
-        })?;
+        .inspect_err(|e| log::error!("Failed to open history file: {}", e))
+        .map_err(|e| format!("Failed to open history file: {e}"))?;
 
-    let content = serde_json::to_string(&history_map).map_err(|e| {
-        log::error!("Failed to serialize history: {}", e);
-        format!("Failed to serialize history: {e}")
-    })?;
+    let content = serde_json::to_string(&history_map)
+        .inspect_err(|e| log::error!("Failed to serialize history: {}", e))
+        .map_err(|e| format!("Failed to serialize history: {e}"))?;
 
-    file.write_all(content.as_bytes()).map_err(|e| {
-        log::error!("Failed to write history: {}", e);
-        format!("Failed to write history: {e}")
-    })?;
+    file.write_all(content.as_bytes())
+        .inspect_err(|e| log::error!("Failed to write history: {}", e))
+        .map_err(|e| format!("Failed to write history: {e}"))?;
 
     Ok(res)
 }
@@ -390,20 +374,16 @@ async fn delete_path_history(
         .truncate(true)
         .create(true)
         .open(&history_path)
-        .map_err(|e| {
-            log::error!("Failed to open history file: {}", e);
-            format!("Failed to open history file: {e}")
-        })?;
+        .inspect_err(|e| log::error!("Failed to open history file: {}", e))
+        .map_err(|e| format!("Failed to open history file: {e}"))?;
 
-    let content = serde_json::to_string(&history_map).map_err(|e| {
-        log::error!("Failed to serialize history: {}", e);
-        format!("Failed to serialize history: {e}")
-    })?;
+    let content = serde_json::to_string(&history_map)
+        .inspect_err(|e| log::error!("Failed to serialize history: {}", e))
+        .map_err(|e| format!("Failed to serialize history: {e}"))?;
 
-    file.write_all(content.as_bytes()).map_err(|e| {
-        log::error!("Failed to write history: {}", e);
-        format!("Failed to write history: {e}")
-    })?;
+    file.write_all(content.as_bytes())
+        .inspect_err(|e| log::error!("Failed to write history: {}", e))
+        .map_err(|e| format!("Failed to write history: {e}"))?;
 
     Ok(res)
 }
@@ -465,10 +445,7 @@ async fn get_key_at_revision(
     let mut state = state.lock().await;
     core::get_key_at_revision(&key, revision, &mut state)
         .await
-        .map_err(|e| {
-            log::error!("Failed to get key at revision: {}", e);
-            e
-        })
+        .inspect_err(|e| log::error!("Failed to get key at revision: {}", e))
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
