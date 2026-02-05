@@ -10,7 +10,6 @@ export function useEtcdItemsQuery({ keyPrefix, currentProfileName, configLoading
         queryKey: ["etcd-items", currentProfileName, keyPrefix],
         queryFn: async () => await fetchEtcdItems(keyPrefix),
         staleTime: 1000 * 60,
-        retry: 2,
         enabled: !configLoading
     });
 }
@@ -23,7 +22,6 @@ export function useClusterInfoQuery({ currentProfileName, configLoading }: {
         queryKey: ["cluster-info", currentProfileName],
         queryFn: async () => await getClusterInfo(),
         staleTime: 1000 * 60,
-        retry: 2,
         enabled: !configLoading && !!currentProfileName,
     });
 }
@@ -36,8 +34,8 @@ export function useEtcdKeysOnlyQuery({ keyPrefix, currentProfileName, configLoad
     return useQuery({
         queryKey: ["etcd-keys-only", currentProfileName, keyPrefix],
         queryFn: async () => await fetchEtcdKeysOnly(keyPrefix),
-        staleTime: 1000 * 60,
-        retry: 2,
+        staleTime: 1000 * 5, // 5 seconds instead of 60
+        refetchOnMount: "always",
         enabled: !configLoading
     });
 }
@@ -51,8 +49,8 @@ export function useEtcdValuesInRangeQuery({ startKey, endKey, currentProfileName
     return useQuery({
         queryKey: ["etcd-values-in-range", currentProfileName, startKey, endKey],
         queryFn: async () => await fetchValuesInRange(startKey, endKey),
-        staleTime: 1000 * 60,
-        retry: 2,
+        staleTime: 1000 * 5, // 5 seconds instead of 60
+        refetchOnMount: "always",
         enabled: enabled && !!startKey && !!endKey,
     });
 }

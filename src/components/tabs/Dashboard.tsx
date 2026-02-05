@@ -70,6 +70,7 @@ interface DashboardProps {
 
 function Dashboard({ configLoading, appConfig }: DashboardProps) {
   const [keyPrefix, setKeyPrefix] = useState("/");
+  const [debouncedKeyPrefix] = useDebounce(keyPrefix, 500); // Debounce keyPrefix to avoid too many queries
   const [searchQuery, setSearchQuery] = useState("");
   const currentProfileName = useMemo(() => appConfig.current_profile ?? "default", [appConfig]);
   // Pagination state
@@ -91,7 +92,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     error: keysError,
     refetch: refetchKeys,
     isFetching: isFetchingKeys,
-  } = useEtcdKeysOnlyQuery({ keyPrefix, currentProfileName, configLoading });
+  } = useEtcdKeysOnlyQuery({ keyPrefix: debouncedKeyPrefix, currentProfileName, configLoading });
 
   // Derived filtered keys for search
   const filteredKeys = useMemo(() => {
@@ -119,6 +120,8 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   });
   // Add delayed loading state to prevent UI flashing for quick operations
   const [delayedLoading] = useDebounce(isFetchingKeys || isFetchingValues, 800);
+  const isTyping = keyPrefix !== debouncedKeyPrefix; // User is still typing
+  const isActuallyLoading = isFetchingKeys || isFetchingValues; // Real loading state
   const loadError = (isKeysError ? (typeof keysError === "string" ? keysError : (keysError instanceof Error ? keysError.message : "Unknown error")) : null)
     || (isValuesError ? (typeof valuesError === "string" ? valuesError : (valuesError instanceof Error ? valuesError.message : "Unknown error")) : null);
 
@@ -222,8 +225,8 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {delayedLoading ? (
-              // Loading skeletons
+            {delayedLoading || (isActuallyLoading && paginatedData.length === 0) ? (
+              // Loading skeletons - show if delayedLoading or if actually loading with no data
               Array.from({ length: 5 }).map((_, index) => (
                 <Table.Row key={`skeleton-${index}`}>
                   <Table.Cell>
@@ -389,13 +392,17 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           <Status.Root colorPalette="red">
             <Status.Indicator /> Connection Error
           </Status.Root>
-          : delayedLoading ?
-            <Status.Root colorPalette="yellow">
-              <Status.Indicator /> Loading...
-            </Status.Root> :
-            <Status.Root colorPalette="green">
-              <Status.Indicator /> Ready
+          : isTyping ?
+            <Status.Root colorPalette="blue">
+              <Status.Indicator /> Typing...
             </Status.Root>
+            : delayedLoading ?
+              <Status.Root colorPalette="yellow">
+                <Status.Indicator /> Loading...
+              </Status.Root> :
+              <Status.Root colorPalette="green">
+                <Status.Indicator /> Ready
+              </Status.Root>
         }
       </HStack>
 

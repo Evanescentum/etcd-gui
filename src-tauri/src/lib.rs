@@ -164,11 +164,11 @@ async fn update_config(
     state: State<'_, Mutex<AppState>>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
-    log::info!("Updating configuration...");
     let mut app_state = state.lock().await;
 
     // Save config to disk
     let path = config::AppConfig::get_config_path(&app_handle)?;
+    log::debug!("Updating config: {:?}", config);
     let file = match File::create(&path) {
         Ok(f) => f,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
@@ -178,15 +178,12 @@ async fn update_config(
                 &path
             ))?;
 
-            log::info!("Config directory not found at {:?}, creating...", parent);
+            log::info!("Config directory not found at {:?}, creating", parent);
 
             std::fs::create_dir_all(parent)
                 .map_err(|err| format!("Failed to create config directory: {}", err))?;
             File::create(&path).map_err(|err| {
-                format!(
-                    "Failed to create config file after creating directory: {}",
-                    err
-                )
+                format!("Failed to create config file after creating directory: {err}")
             })?
         }
         Err(e) => {
