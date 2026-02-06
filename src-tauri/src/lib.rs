@@ -3,6 +3,7 @@ mod config;
 mod core;
 mod state;
 
+use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::Serialize;
 use state::AppState;
 use std::collections::HashMap;
@@ -12,6 +13,32 @@ use std::path::PathBuf;
 use tauri::{Manager, State};
 use tauri_plugin_log::{Target, TargetKind};
 use tokio::sync::Mutex;
+
+#[derive(Serialize)]
+struct FormattedTimestamp {
+    utc: String,
+    local: String,
+}
+
+/// Format a Unix timestamp (in milliseconds) to ISO 8601 strings
+/// Returns both UTC and local time representations
+#[tauri::command]
+fn format_timestamp(timestamp_ms: i64) -> Result<FormattedTimestamp, String> {
+    // Convert milliseconds to DateTime<Utc>
+    let datetime_utc = Utc
+        .timestamp_millis_opt(timestamp_ms)
+        .single()
+        .ok_or_else(|| format!("Invalid timestamp: {}", timestamp_ms))?;
+
+    // Format UTC time in ISO 8601
+    let utc = datetime_utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
+
+    // Convert to local timezone and format
+    let datetime_local: DateTime<Local> = datetime_utc.into();
+    let local = datetime_local.to_rfc3339_opts(chrono::SecondsFormat::Millis, false);
+
+    Ok(FormattedTimestamp { utc, local })
+}
 
 /// Initialize the etcd client managed by the application state.
 ///
@@ -485,7 +512,8 @@ pub fn run() {
             get_path_history,
             delete_path_history,
             get_system_fonts,
-            get_key_at_revision
+            get_key_at_revision,
+            format_timestamp
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));

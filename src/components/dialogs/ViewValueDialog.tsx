@@ -6,6 +6,7 @@ import { toaster } from "../ui/toaster";
 import { LuCopy, LuHistory, LuChevronLeft, LuChevronRight, LuChevronsRight } from "react-icons/lu";
 import { EtcdItem, getKeyAtRevision } from "../../api/etcd";
 import { useDebounce } from "use-debounce";
+import AnnotatedText from "../AnnotatedText";
 
 interface ViewValueDialogProps {
     keyToView: string;
@@ -130,9 +131,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                 <VStack gap={4} align="stretch">
                                     <Field.Root>
                                         <Field.Label>Key</Field.Label>
-                                        <Text borderWidth="1px" borderRadius="md" padding={2} width="100%" fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="anywhere">
-                                            {keyToView}
-                                        </Text>
+                                        <AnnotatedText text={keyToView} borderWidth="1px" borderRadius="md" padding={2} width="100%" fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="anywhere" />
                                     </Field.Root>
 
                                     <Field.Root>
@@ -157,9 +156,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                             maxHeight="60vh"
                                             overflowY="auto"
                                         >
-                                            <Text fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" display="block">
-                                                {pretty}
-                                            </Text>
+                                            <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" display="block" />
                                         </Box>
                                     </Field.Root>
                                 </VStack>
@@ -292,9 +289,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                                         <Spinner size="sm" />
                                                     </Flex>
                                                 )}
-                                                <Text fontFamily="mono" fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all" maxHeight="12rem" overflowY="auto">
-                                                    {currentHistoryItem.value}
-                                                </Text>
+                                                <AnnotatedText text={currentHistoryItem.value} fontFamily="mono" fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all" maxHeight="12rem" overflowY="auto" />
                                             </Box>
                                         </Box>
                                     </VStack>

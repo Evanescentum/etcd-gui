@@ -315,3 +315,20 @@ export async function getKeyAtRevision(key: string, revision: number): Promise<E
         throw error;
     }
 }
+
+/**
+ * Format a Unix timestamp (in milliseconds) to ISO 8601 strings
+ * Returns both UTC and local time representations
+ * Uses Rust backend for reliable formatting with chrono library
+ * @param timestamp Unix timestamp in milliseconds
+ */
+export async function formatTimestamp(timestamp: number): Promise<{ utc: string; local: string }> {
+    try {
+        return await invoke<{ utc: string; local: string }>('format_timestamp', {
+            timestampMs: timestamp,
+        });
+    } catch (error) {
+        console.error('Error formatting timestamp:', error);
+        throw error;
+    }
+}

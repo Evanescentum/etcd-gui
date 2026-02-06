@@ -684,8 +684,10 @@ checksum = "1a7964611d71df112cb1730f2ee67324fcf4d0fc6606acbbe9bfe06df124637c"
 dependencies = [
  "android-tzdata",
  "iana-time-zone",
+ "js-sys",
  "num-traits",
  "serde",
+ "wasm-bindgen",
  "windows-link 0.1.3",
 ]
 
@@ -1218,6 +1220,7 @@ name = "etcd-gui"
 version = "1.0.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "etcd-client",
  "fern",
  "font-kit",
