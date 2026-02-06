@@ -15,7 +15,10 @@ import {
     Badge,
     EmptyState,
     Icon,
+    Stat,
 } from "@chakra-ui/react";
+import { Tooltip } from "../ui/tooltip";
+import { toaster } from "../ui/toaster";
 import {
     LuRefreshCw,
     LuServer,
@@ -29,61 +32,6 @@ import {
 } from "react-icons/lu";
 import type { AppConfig } from "../../api/etcd";
 import { useClusterInfoQuery } from "../../hooks/useEtcdQuery";
-
-interface StatCardProps {
-    label: string;
-    value: string | number;
-    icon: React.ReactNode;
-    colorPalette?: string;
-}
-
-const StatCard = ({ label, value, icon, colorPalette = "blue" }: StatCardProps) => {
-    return (
-        <Card.Root
-            variant="elevated"
-            _hover={{
-                transform: "translateY(-2px)",
-                shadow: "lg",
-                transition: "all 0.2s"
-            }}
-            transition="all 0.2s"
-        >
-            <Card.Body>
-                <Flex direction="column" gap={3}>
-                    <HStack justify="space-between">
-                        <Box
-                            p={2}
-                            borderRadius="lg"
-                            bg={`${colorPalette}.100`}
-                            color={`${colorPalette}.700`}
-                            _dark={{
-                                bg: `${colorPalette}.900`,
-                                color: `${colorPalette}.200`
-                            }}
-                        >
-                            <Icon fontSize="xl">{icon}</Icon>
-                        </Box>
-                        <Badge
-                            colorPalette={colorPalette}
-                            variant="subtle"
-                            size="sm"
-                        >
-                            Live
-                        </Badge>
-                    </HStack>
-                    <Box>
-                        <Text fontSize="xs" color="fg.muted" mb={1} fontWeight="medium" textTransform="uppercase" letterSpacing="wider">
-                            {label}
-                        </Text>
-                        <Text fontSize="3xl" fontWeight="bold" lineHeight="1.2" color="fg.emphasized">
-                            {value}
-                        </Text>
-                    </Box>
-                </Flex>
-            </Card.Body>
-        </Card.Root>
-    );
-};
 
 interface ClusterProps {
     configLoading: boolean;
@@ -101,13 +49,31 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
         isFetching,
     } = useClusterInfoQuery({ currentProfileName, configLoading });
 
+    const handleCopyClusterId = async (clusterId: number | string) => {
+        try {
+            await navigator.clipboard.writeText(String(clusterId));
+            toaster.success({
+                title: "复制成功",
+                description: "Cluster ID 已复制到剪贴板",
+            });
+        } catch (err) {
+            toaster.error({
+                title: "复制失败",
+                description: "无法复制到剪贴板",
+            });
+        }
+    };
+
     const formatBytes = (bytes: number) => {
-        if (bytes === 0) return "0 Bytes";
+        if (bytes === 0) return { value: "0", unit: "Bytes" };
         const k = 1024;
         const sizes = ["Bytes", "KB", "MB", "GB"];
         const i = Math.floor(Math.log(bytes) / Math.log(k));
-        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + " " + sizes[i];
+        const value = (Math.round((bytes / Math.pow(k, i)) * 100) / 100).toString();
+        return { value, unit: sizes[i] };
     };
+
+    const dbSize = formatBytes(clusterInfo?.db_size || 0);
 
     if (isFetching && !clusterInfo) {
         return (
@@ -199,30 +165,166 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
                                 </Heading>
                             </HStack>
                             <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={5}>
-                                <StatCard
-                                    label="Cluster ID"
-                                    value={clusterInfo.cluster_id}
-                                    icon={<LuNetwork />}
-                                    colorPalette="blue"
-                                />
-                                <StatCard
-                                    label="Members"
-                                    value={clusterInfo.members.length}
-                                    icon={<LuUsers />}
-                                    colorPalette="green"
-                                />
-                                <StatCard
-                                    label="Database Size"
-                                    value={formatBytes(clusterInfo.db_size)}
-                                    icon={<LuDatabase />}
-                                    colorPalette="purple"
-                                />
-                                <StatCard
-                                    label="ETCD Version"
-                                    value={clusterInfo.version}
-                                    icon={<LuServer />}
-                                    colorPalette="orange"
-                                />
+                                <Card.Root
+                                    variant="elevated"
+                                    _hover={{
+                                        transform: "translateY(-2px)",
+                                        shadow: "lg",
+                                        transition: "all 0.2s"
+                                    }}
+                                    transition="all 0.2s"
+                                >
+                                    <Card.Body>
+                                        <Stat.Root colorPalette="blue" size="lg">
+                                            <HStack justify="space-between" mb={3}>
+                                                <Box
+                                                    p={2}
+                                                    borderRadius="lg"
+                                                    bg="blue.100"
+                                                    color="blue.700"
+                                                    _dark={{
+                                                        bg: "blue.900",
+                                                        color: "blue.200"
+                                                    }}
+                                                >
+                                                    <Icon fontSize="xl"><LuNetwork /></Icon>
+                                                </Box>
+                                                <Badge colorPalette="blue" variant="subtle" size="sm">
+                                                    Live
+                                                </Badge>
+                                            </HStack>
+                                            <Stat.Label>Cluster ID</Stat.Label>
+                                            <Tooltip
+                                                openDelay={300}
+                                                content={
+                                                    <Box>
+                                                        <Text fontFamily="mono" fontSize="sm">{clusterInfo.cluster_id}</Text>
+                                                        <Text fontSize="xs" color="fg.muted" mt={1}>点击可复制</Text>
+                                                    </Box>
+                                                }
+                                            >
+                                                <Stat.ValueText
+                                                    fontFamily="mono"
+                                                    cursor="pointer"
+                                                    overflow="hidden"
+                                                    textOverflow="ellipsis"
+                                                    whiteSpace="nowrap"
+                                                    maxWidth="100%"
+                                                    display="block"
+                                                    onClick={() => handleCopyClusterId(clusterInfo.cluster_id)}
+                                                    _hover={{ color: "blue.500" }}
+                                                >
+                                                    {clusterInfo.cluster_id}
+                                                </Stat.ValueText>
+                                            </Tooltip>
+                                        </Stat.Root>
+                                    </Card.Body>
+                                </Card.Root>
+
+                                <Card.Root
+                                    variant="elevated"
+                                    _hover={{
+                                        transform: "translateY(-2px)",
+                                        shadow: "lg",
+                                        transition: "all 0.2s"
+                                    }}
+                                    transition="all 0.2s"
+                                >
+                                    <Card.Body>
+                                        <Stat.Root colorPalette="green" size="lg">
+                                            <HStack justify="space-between" mb={3}>
+                                                <Box
+                                                    p={2}
+                                                    borderRadius="lg"
+                                                    bg="green.100"
+                                                    color="green.700"
+                                                    _dark={{
+                                                        bg: "green.900",
+                                                        color: "green.200"
+                                                    }}
+                                                >
+                                                    <Icon fontSize="xl"><LuUsers /></Icon>
+                                                </Box>
+                                                <Badge colorPalette="green" variant="subtle" size="sm">
+                                                    Live
+                                                </Badge>
+                                            </HStack>
+                                            <Stat.Label>Members</Stat.Label>
+                                            <Stat.ValueText>{clusterInfo.members.length}</Stat.ValueText>
+                                        </Stat.Root>
+                                    </Card.Body>
+                                </Card.Root>
+
+                                <Card.Root
+                                    variant="elevated"
+                                    _hover={{
+                                        transform: "translateY(-2px)",
+                                        shadow: "lg",
+                                        transition: "all 0.2s"
+                                    }}
+                                    transition="all 0.2s"
+                                >
+                                    <Card.Body>
+                                        <Stat.Root colorPalette="purple" size="lg">
+                                            <HStack justify="space-between" mb={3}>
+                                                <Box
+                                                    p={2}
+                                                    borderRadius="lg"
+                                                    bg="purple.100"
+                                                    color="purple.700"
+                                                    _dark={{
+                                                        bg: "purple.900",
+                                                        color: "purple.200"
+                                                    }}
+                                                >
+                                                    <Icon fontSize="xl"><LuDatabase /></Icon>
+                                                </Box>
+                                                <Badge colorPalette="purple" variant="subtle" size="sm">
+                                                    Live
+                                                </Badge>
+                                            </HStack>
+                                            <Stat.Label>Database Size</Stat.Label>
+                                            <HStack gap={1} align="baseline">
+                                                <Stat.ValueText>{dbSize.value}</Stat.ValueText>
+                                                <Stat.ValueUnit>{dbSize.unit}</Stat.ValueUnit>
+                                            </HStack>
+                                        </Stat.Root>
+                                    </Card.Body>
+                                </Card.Root>
+
+                                <Card.Root
+                                    variant="elevated"
+                                    _hover={{
+                                        transform: "translateY(-2px)",
+                                        shadow: "lg",
+                                        transition: "all 0.2s"
+                                    }}
+                                    transition="all 0.2s"
+                                >
+                                    <Card.Body>
+                                        <Stat.Root colorPalette="orange" size="lg">
+                                            <HStack justify="space-between" mb={3}>
+                                                <Box
+                                                    p={2}
+                                                    borderRadius="lg"
+                                                    bg="orange.100"
+                                                    color="orange.700"
+                                                    _dark={{
+                                                        bg: "orange.900",
+                                                        color: "orange.200"
+                                                    }}
+                                                >
+                                                    <Icon fontSize="xl"><LuServer /></Icon>
+                                                </Box>
+                                                <Badge colorPalette="orange" variant="subtle" size="sm">
+                                                    Live
+                                                </Badge>
+                                            </HStack>
+                                            <Stat.Label>ETCD Version</Stat.Label>
+                                            <Stat.ValueText>{clusterInfo.version}</Stat.ValueText>
+                                        </Stat.Root>
+                                    </Card.Body>
+                                </Card.Root>
                             </SimpleGrid>
                         </Box>
 
@@ -245,12 +347,10 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
                                         bg="gray.contrast"
                                         borderWidth="1px"
                                     >
-                                        <Text fontSize="xs" color="fg.muted" mb={2} fontWeight="medium" textTransform="uppercase">
-                                            Raft Index
-                                        </Text>
-                                        <Text fontSize="2xl" fontWeight="bold" color="blue.solid">
-                                            {clusterInfo.raft_index}
-                                        </Text>
+                                        <Stat.Root colorPalette="blue" size="md">
+                                            <Stat.Label>Raft Index</Stat.Label>
+                                            <Stat.ValueText>{clusterInfo.raft_index}</Stat.ValueText>
+                                        </Stat.Root>
                                     </Box>
                                     <Box
                                         p={4}
@@ -258,12 +358,10 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
                                         bg="gray.contrast"
                                         borderWidth="1px"
                                     >
-                                        <Text fontSize="xs" color="fg.muted" mb={2} fontWeight="medium" textTransform="uppercase">
-                                            Raft Term
-                                        </Text>
-                                        <Text fontSize="2xl" fontWeight="bold" color="purple.fg">
-                                            {clusterInfo.raft_term}
-                                        </Text>
+                                        <Stat.Root colorPalette="purple" size="md">
+                                            <Stat.Label>Raft Term</Stat.Label>
+                                            <Stat.ValueText>{clusterInfo.raft_term}</Stat.ValueText>
+                                        </Stat.Root>
                                     </Box>
                                     <Box
                                         p={4}
@@ -271,22 +369,20 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
                                         bg="gray.contrast"
                                         borderWidth="1px"
                                     >
-                                        <HStack justify="space-between" mb={2}>
-                                            <Text fontSize="xs" color="fg.muted" fontWeight="medium" textTransform="uppercase">
-                                                Current Leader
-                                            </Text>
-                                            <Icon color="green.fg">
-                                                <LuShield />
-                                            </Icon>
-                                        </HStack>
-                                        <HStack gap={2}>
-                                            <Text fontSize="xl" fontWeight="bold" color="green.solid">
-                                                {leaderMember?.name || clusterInfo.leader}
-                                            </Text>
-                                            <Badge colorPalette="green" variant="solid" size="sm">
-                                                Active
-                                            </Badge>
-                                        </HStack>
+                                        <Stat.Root colorPalette="green" size="md">
+                                            <HStack justify="space-between" mb={2}>
+                                                <Stat.Label>Current Leader</Stat.Label>
+                                                <Icon color="green.fg">
+                                                    <LuShield />
+                                                </Icon>
+                                            </HStack>
+                                            <HStack gap={2} align="baseline">
+                                                <Stat.ValueText>{leaderMember?.name || clusterInfo.leader}</Stat.ValueText>
+                                                <Badge colorPalette="green" variant="solid" size="sm">
+                                                    Active
+                                                </Badge>
+                                            </HStack>
+                                        </Stat.Root>
                                     </Box>
                                 </SimpleGrid>
                             </Card.Body>
