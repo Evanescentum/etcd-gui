@@ -25,8 +25,6 @@ function DeleteKeyDialog({
     onClose,
     refetch
 }: DeleteKeyDialogProps) {
-    const borderColor = useColorModeValue("gray.200", "gray.700");
-
     const { mutateAsync, isPending } = useMutation<void, String, { key: string }>({
         mutationFn: async ({ key }) => await deleteEtcdItem(key),
         onSuccess: () => refetch(),
@@ -39,7 +37,7 @@ function DeleteKeyDialog({
         <Dialog.Root modal={true} open={true}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-                <Dialog.Content maxWidth="500px" width="90%">
+                <Dialog.Content maxWidth="500px" width="90%" overflow="visible">
                     <Dialog.Header>
                         <Dialog.Title>Confirm Delete</Dialog.Title>
                         <CloseButton
@@ -51,48 +49,35 @@ function DeleteKeyDialog({
                         ><HiX /></CloseButton>
                     </Dialog.Header>
                     <Dialog.Body>
-                        <VStack gap={4} align="stretch">
-                            <Text>
-                                Are you sure you want to delete this key?
-                            </Text>
+                        <VStack gap={2} align="stretch">
+                            <Text fontFamily="mono" fontWeight="semibold" mb={1}>Key:</Text>
                             <Box
-                                p={3}
+                                p={2}
                                 borderWidth="1px"
                                 borderRadius="md"
-                                borderColor={borderColor}
-                                bg={useColorModeValue("gray.50", "gray.700")}
+                                borderColor={useColorModeValue("gray.300", "gray.600")}
+                                bg={useColorModeValue("gray.100", "gray.800")}
                             >
-                                <Text fontFamily="mono" fontWeight="semibold" mb={1}>Key:</Text>
-                                <Box
-                                    p={2}
-                                    borderWidth="1px"
-                                    borderRadius="md"
-                                    borderColor={useColorModeValue("gray.300", "gray.600")}
-                                    bg={useColorModeValue("gray.100", "gray.800")}
-                                    maxHeight="150px"
-                                    overflowY="auto"
-                                >
-                                    <Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="break-word">
-                                        {keyToDelete}
-                                    </Text>
-                                </Box>
-
-                                <Text fontFamily="mono" fontWeight="semibold" mt={3} mb={1}>Value:</Text>
-                                <Box
-                                    p={2}
-                                    borderWidth="1px"
-                                    borderRadius="md"
-                                    borderColor={useColorModeValue("gray.300", "gray.600")}
-                                    bg={useColorModeValue("gray.100", "gray.800")}
-                                    maxHeight="150px"
-                                    overflowY="auto"
-                                >
-                                    <Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="break-word">
-                                        {valueToDelete}
-                                    </Text>
-                                </Box>
+                                <Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap">
+                                    {keyToDelete}
+                                </Text>
                             </Box>
-                            <Text color="red.500" fontSize="sm">
+
+                            <Text fontFamily="mono" fontWeight="semibold" mt={3} mb={1}>Value:</Text>
+                            <Box
+                                overflowY="auto"
+                                maxHeight="40vh"
+                                p={2}
+                                borderWidth="1px"
+                                borderRadius="md"
+                                borderColor={useColorModeValue("gray.300", "gray.600")}
+                                bg={useColorModeValue("gray.100", "gray.800")}
+                            >
+                                <Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap">
+                                    {valueToDelete}
+                                </Text>
+                            </Box>
+                            <Text color="red.500" fontSize="sm" alignSelf="end">
                                 This action cannot be undone.
                             </Text>
                         </VStack>

@@ -65,6 +65,7 @@ function AddKeyDialog({
                                 </Field.Label>
                                 <Textarea
                                     {...codeInputProps}
+                                    maxHeight="45vh"
                                     placeholder="Enter value (string, JSON, etc.)"
                                     autoresize
                                     value={dialogNewValue}

@@ -109,7 +109,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
         <Dialog.Root open size="xl">
             <Dialog.Backdrop onClick={onClose} />
             <Dialog.Positioner>
-                <Dialog.Content bg="transparent" shadow="none" maxWidth="none" width="auto" p={0}>
+                <Dialog.Content bg="transparent" shadow="none" maxWidth="max-content">
                     <Flex align="start" gap={4} justify="center">
                         {/* Main View Window */}
                         <Box
@@ -121,45 +121,39 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                             position="relative"
                             borderWidth="1px"
                         >
-                            <Dialog.Header>
+                            <Dialog.Header p={4} display="inline-flex" justifyContent="space-between" width="100%">
                                 <Dialog.Title>View Value</Dialog.Title>
-                                <CloseButton position="absolute" right={4} top={4} size="sm" onClick={onClose}>
-                                    <HiX />
-                                </CloseButton>
+                                <CloseButton size="sm" onClick={onClose}> <HiX /></CloseButton>
                             </Dialog.Header>
-                            <Dialog.Body pb={6}>
-                                <VStack gap={4} align="stretch">
-                                    <Field.Root>
-                                        <Field.Label>Key</Field.Label>
-                                        <AnnotatedText text={keyToView} borderWidth="1px" borderRadius="md" padding={2} width="100%" fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="anywhere" />
-                                    </Field.Root>
-
-                                    <Field.Root>
-                                        <HStack justify="space-between" align="center" width="100%">
-                                            <Field.Label>
-                                                Value {textPatternIndicator}
-                                            </Field.Label>
-                                            <IconButton
-                                                size="sm"
-                                                variant="subtle"
-                                                onClick={() => handleCopyValue(pretty)}
-                                                alignSelf="flex-end"
-                                            >
-                                                <LuCopy />
-                                            </IconButton>
-                                        </HStack>
-                                        <Box
-                                            borderWidth="1px"
-                                            borderRadius="md"
-                                            padding={2}
-                                            width="100%"
-                                            maxHeight="60vh"
-                                            overflowY="auto"
+                            <Dialog.Body marginTop={0} pb={4}>
+                                <Field.Root>
+                                    <Field.Label>Key</Field.Label>
+                                    <AnnotatedText text={keyToView} borderWidth="1px" borderRadius="md" padding={2} width="100%" fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="anywhere" />
+                                </Field.Root>
+                                <Field.Root marginTop={2} maxHeight="50vh">
+                                    <HStack justify="space-between" align="center">
+                                        <Field.Label>
+                                            Value {textPatternIndicator}
+                                        </Field.Label>
+                                        <IconButton
+                                            size="sm"
+                                            variant="subtle"
+                                            onClick={() => handleCopyValue(pretty)}
+                                            alignSelf="flex-end"
                                         >
-                                            <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" display="block" />
-                                        </Box>
-                                    </Field.Root>
-                                </VStack>
+                                            <LuCopy />
+                                        </IconButton>
+                                    </HStack>
+                                    <Box
+                                        borderWidth="1px"
+                                        borderRadius="md"
+                                        padding={2}
+                                        width="100%"
+                                        overflowY="auto"
+                                    >
+                                        <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" display="block" />
+                                    </Box>
+                                </Field.Root>
                             </Dialog.Body>
                             <Dialog.Footer>
                                 <Button onClick={onClose}>Close</Button>
@@ -188,13 +182,12 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                             borderRadius="xl"
                             overflow="hidden"
                             transition="all 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
-                            width={showHistory ? "22rem" : "0rem"}
+                            width={showHistory ? "25rem" : "0rem"}
                             opacity={showHistory ? 1 : 0}
                             borderWidth={showHistory ? "1px" : "0px"}
-                            height="auto"
                             minHeight="25rem"
                         >
-                            <Box p={4} width="22rem" display={showHistory ? "block" : "none"}>
+                            <Box p={3} display={showHistory ? "block" : "none"}>
                                 <HStack justify="space-between" mb={4}>
                                     <Heading size="sm">Metadata & History</Heading>
                                     <IconButton
@@ -208,89 +201,81 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                 </HStack>
 
                                 {currentHistoryItem && (
-                                    <VStack align="stretch" gap={6}>
+                                    <VStack align="stretch" gap={2}>
                                         {/* Navigation Bar */}
-                                        <Box bg="bg.subtle" p={2} borderRadius="md">
-                                            <HStack justify="space-between">
+                                        <HStack justify="space-between" bg="bg.subtle" p={2} borderRadius="md">
+                                            <IconButton size="sm" onClick={handleOlder}
+                                                disabled={loadingHistory || currentHistoryItem.mod_revision === currentHistoryItem.create_revision}
+                                            >
+                                                <LuChevronLeft />
+                                            </IconButton>
+
+                                            <VStack gap={0}>
+                                                <Text fontSize="xs" fontWeight="bold" color="fg.muted">Revision</Text>
+                                                <Text fontFamily="mono" fontWeight="bold">
+                                                    {currentHistoryItem.mod_revision}
+                                                    {historyIndex === 0 && <Text as="span" color="green.500" ml={1}>(Latest)</Text>}
+                                                </Text>
+                                            </VStack>
+
+                                            <HStack gap={1}>
                                                 <IconButton
-                                                    aria-label="Older"
+                                                    aria-label="Newer"
                                                     size="sm"
-                                                    onClick={handleOlder}
-                                                    disabled={loadingHistory || currentHistoryItem.mod_revision === currentHistoryItem.create_revision}
+                                                    onClick={handleNewer}
+                                                    disabled={historyIndex === 0}
                                                 >
-                                                    <LuChevronLeft />
+                                                    <LuChevronRight />
                                                 </IconButton>
-
-                                                <VStack gap={0}>
-                                                    <Text fontSize="xs" fontWeight="bold" color="fg.muted">REVISION</Text>
-                                                    <Text fontFamily="mono" fontWeight="bold">
-                                                        {currentHistoryItem.mod_revision}
-                                                        {historyIndex === 0 && <Text as="span" color="green.500" ml={1}>(Latest)</Text>}
-                                                    </Text>
-                                                </VStack>
-
-                                                <HStack gap={1}>
-                                                    <IconButton
-                                                        aria-label="Newer"
-                                                        size="sm"
-                                                        onClick={handleNewer}
-                                                        disabled={historyIndex === 0}
-                                                    >
-                                                        <LuChevronRight />
-                                                    </IconButton>
-                                                    <IconButton
-                                                        aria-label="Latest"
-                                                        size="sm"
-                                                        onClick={handleLatest}
-                                                        disabled={historyIndex === 0}
-                                                    >
-                                                        <LuChevronsRight />
-                                                    </IconButton>
-                                                </HStack>
+                                                <IconButton
+                                                    aria-label="Latest"
+                                                    size="sm"
+                                                    onClick={handleLatest}
+                                                    disabled={historyIndex === 0}
+                                                >
+                                                    <LuChevronsRight />
+                                                </IconButton>
                                             </HStack>
-                                        </Box>
+                                        </HStack>
 
                                         {/* Metadata Table */}
-                                        <Box>
-                                            <Text fontSize="xs" color="fg.muted" mb={2} fontWeight="bold">METADATA</Text>
-                                            <Table.Root size="sm" variant="outline" showColumnBorder>
-                                                <Table.Body>
-                                                    <Table.Row>
-                                                        <Table.Cell bg="bg.subtle" fontWeight="medium" width="120px">Version</Table.Cell>
-                                                        <Table.Cell fontFamily="mono">{currentHistoryItem.version}</Table.Cell>
-                                                    </Table.Row>
-                                                    <Table.Row>
-                                                        <Table.Cell bg="bg.subtle" fontWeight="medium">Create Rev</Table.Cell>
-                                                        <Table.Cell fontFamily="mono">{currentHistoryItem.create_revision}</Table.Cell>
-                                                    </Table.Row>
-                                                    <Table.Row>
-                                                        <Table.Cell bg="bg.subtle" fontWeight="medium">Mod Rev</Table.Cell>
-                                                        <Table.Cell fontFamily="mono">{currentHistoryItem.mod_revision}</Table.Cell>
-                                                    </Table.Row>
-                                                    <Table.Row>
-                                                        <Table.Cell bg="bg.subtle" fontWeight="medium">Lease</Table.Cell>
-                                                        <Table.Cell fontFamily="mono">{currentHistoryItem.lease}</Table.Cell>
-                                                    </Table.Row>
-                                                </Table.Body>
-                                            </Table.Root>
-                                        </Box>
+
+                                        <Text fontSize="xs" color="fg.muted" fontWeight="bold">Metadata</Text>
+                                        <Table.Root size="sm" variant="outline" showColumnBorder>
+                                            <Table.Body>
+                                                <Table.Row>
+                                                    <Table.Cell bg="bg.subtle" fontWeight="medium" width="120px">Version</Table.Cell>
+                                                    <Table.Cell fontFamily="mono">{currentHistoryItem.version}</Table.Cell>
+                                                </Table.Row>
+                                                <Table.Row>
+                                                    <Table.Cell bg="bg.subtle" fontWeight="medium">Create Rev</Table.Cell>
+                                                    <Table.Cell fontFamily="mono">{currentHistoryItem.create_revision}</Table.Cell>
+                                                </Table.Row>
+                                                <Table.Row>
+                                                    <Table.Cell bg="bg.subtle" fontWeight="medium">Mod Rev</Table.Cell>
+                                                    <Table.Cell fontFamily="mono">{currentHistoryItem.mod_revision}</Table.Cell>
+                                                </Table.Row>
+                                                <Table.Row>
+                                                    <Table.Cell bg="bg.subtle" fontWeight="medium">Lease</Table.Cell>
+                                                    <Table.Cell fontFamily="mono">{currentHistoryItem.lease}</Table.Cell>
+                                                </Table.Row>
+                                            </Table.Body>
+                                        </Table.Root>
 
                                         {/* Value Display */}
-                                        <Box>
-                                            <HStack justify="space-between" mb={2}>
-                                                <Text fontSize="xs" color="fg.muted" fontWeight="bold">VALUE</Text>
-                                                <IconButton size="xs" variant="ghost" onClick={() => handleCopyValue(currentHistoryItem.value)}>
-                                                    <LuCopy />
-                                                </IconButton>
-                                            </HStack>
-                                            <Box borderWidth="1px" borderRadius="md" p={3} bg="bg.subtle" position="relative">
-                                                {loadingHistory && showSpinner && (
-                                                    <Flex position="absolute" inset={0} bg="whiteAlpha.800" align="center" justify="center" zIndex={1}>
-                                                        <Spinner size="sm" />
-                                                    </Flex>
-                                                )}
-                                                <AnnotatedText text={currentHistoryItem.value} fontFamily="mono" fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all" maxHeight="12rem" overflowY="auto" />
-                                            </Box>
+                                        <HStack justify="space-between">
+                                            <Text fontSize="xs" color="fg.muted" fontWeight="bold">Value</Text>
+                                            <IconButton size="xs" variant="ghost" onClick={() => handleCopyValue(currentHistoryItem.value)}>
+                                                <LuCopy />
+                                            </IconButton>
+                                        </HStack>
+                                        <Box maxHeight="30vh" overflowY="auto" borderWidth="1px" borderRadius="md" p={3} bg="bg.subtle" position="relative">
+                                            {loadingHistory && showSpinner && (
+                                                <Flex position="absolute" inset={0} bg="whiteAlpha.800" align="center" justify="center" zIndex={1}>
+                                                    <Spinner size="sm" />
+                                                </Flex>
+                                            )}
+                                            <AnnotatedText text={currentHistoryItem.value} fontFamily="mono" fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all" />
                                         </Box>
                                     </VStack>
                                 )}

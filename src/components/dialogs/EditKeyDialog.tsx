@@ -35,24 +35,16 @@ function EditKeyDialog({
         <Dialog.Root modal={true} open={true}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-                <Dialog.Content maxWidth="600px" width="90%">
-                    <Dialog.Header>
+                <Dialog.Content maxWidth="50%">
+                    <Dialog.Header display="inline-flex" justifyContent="space-between" width="100%">
                         <Dialog.Title>Edit Key</Dialog.Title>
-                        <CloseButton
-                            position="absolute"
-                            right={4}
-                            top={4}
-                            size="sm"
-                            onClick={onClose}
-                        ><HiX /></CloseButton>
+                        <CloseButton size="sm" onClick={onClose} ><HiX /></CloseButton>
                     </Dialog.Header>
                     <Dialog.Body>
                         <VStack gap={4} align="stretch">
                             <Field.Root required>
-                                <Field.Label>
-                                    Key <Field.RequiredIndicator />
-                                </Field.Label>
-                                <Box position="relative">
+                                <Field.Label> Key <Field.RequiredIndicator /> </Field.Label>
+                                <Box position="relative" width="100%">
                                     <Input
                                         {...codeInputProps}
                                         value={dialogKey}
@@ -81,11 +73,10 @@ function EditKeyDialog({
                             </Field.Root>
 
                             <Field.Root required>
-                                <Field.Label>
-                                    Value <Field.RequiredIndicator />
-                                </Field.Label>
+                                <Field.Label>  Value <Field.RequiredIndicator /> </Field.Label>
                                 <Textarea
                                     {...codeInputProps}
+                                    maxHeight="45vh"
                                     placeholder="Enter value (string, JSON, etc.)"
                                     autoresize
                                     value={dialogValue}
