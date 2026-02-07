@@ -50,17 +50,34 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
     };
 
     await saveConfig(updatedConfig);
-    // Reconnect to etcd with the new profile
-    await initializeEtcdClient();
 
-    // Invalidate all queries related to the old profile
-    queryClient.invalidateQueries({ queryKey: ["etcd-items"] });
-    queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
-    queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
-    queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
+    // Reconnect to etcd with the new profile
+    try {
+      await initializeEtcdClient();
+
+      // Invalidate all queries related to the old profile
+      queryClient.invalidateQueries({ queryKey: ["etcd-items"] });
+      queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
+      queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
+      queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
+
+      toaster.create({
+        title: "Profile Activated",
+        description: `Connected to ${profileName}`,
+        type: "success",
+        closable: true,
+      });
+    } catch (error) {
+      console.error("Failed to activate profile:", error);
+      toaster.create({
+        title: "Connection Failed",
+        description: "Failed to connect to the selected profile. Please check your connection settings.",
+        type: "error",
+        closable: true,
+      });
+    }
 
     setLoading(false);
-
   };
 
   const handleCreateProfile = () => {
