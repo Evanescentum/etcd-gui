@@ -113,8 +113,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     error: valuesError,
     isFetching: isFetchingValues,
   } = useEtcdValuesInRangeQuery({
-    startKey: pageKeys[0],
-    endKey: pageKeys[pageKeys.length - 1],
+    keys: pageKeys,
     currentProfileName,
     enabled: !configLoading && pageKeys.length > 0,
   });

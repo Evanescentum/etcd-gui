@@ -40,17 +40,18 @@ export function useEtcdKeysOnlyQuery({ keyPrefix, currentProfileName, configLoad
     });
 }
 
-export function useEtcdValuesInRangeQuery({ startKey, endKey, currentProfileName, enabled }: {
-    startKey: string;
-    endKey: string;
+export function useEtcdValuesInRangeQuery({ keys, currentProfileName, enabled }: {
+    keys: string[];
     currentProfileName: string;
     enabled: boolean;
 }): UseQueryResult<EtcdItem[], Error> {
+    const startKey = keys[0];
+    const endKey = keys[keys.length - 1];
     return useQuery({
-        queryKey: ["etcd-values-in-range", currentProfileName, startKey, endKey],
+        queryKey: ["etcd-values-in-range", currentProfileName, keys],
         queryFn: async () => await fetchValuesInRange(startKey, endKey),
         staleTime: 1000 * 5, // 5 seconds instead of 60
         refetchOnMount: "always",
-        enabled: enabled && !!startKey && !!endKey,
+        enabled: enabled && keys.length > 0,
     });
 }
