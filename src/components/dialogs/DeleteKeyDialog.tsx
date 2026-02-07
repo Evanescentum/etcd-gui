@@ -6,6 +6,7 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react";
+import { useEffect } from "react";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { HiX } from "react-icons/hi"
 import { useMutation } from "@tanstack/react-query";
@@ -32,6 +33,17 @@ function DeleteKeyDialog({
             toaster.create({ type: "error", title: "Delete Key Failed", description: error, closable: true });
         },
     });
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose]);
 
     return (
         <Dialog.Root modal={true} open={true}>

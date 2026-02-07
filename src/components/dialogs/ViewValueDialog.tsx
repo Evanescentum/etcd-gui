@@ -30,6 +30,17 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
         }
     }, [item]);
 
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose]);
+
     const currentHistoryItem = historyStack[historyIndex];
 
     const { isJson, pretty } = useMemo(() => {

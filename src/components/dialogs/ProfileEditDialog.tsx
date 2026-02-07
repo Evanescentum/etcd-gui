@@ -39,6 +39,17 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
         setIsLocked(!!profile.locked);
     }, [profile]);
 
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onCancel();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onCancel]);
+
     const handleSave = () => {
         // Prepare the final profile object
         const finalProfile = {

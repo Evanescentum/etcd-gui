@@ -1,4 +1,4 @@
-import { useState, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { Button, CloseButton, Dialog, Field, Input, VStack, Box, Textarea, Text } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
@@ -30,6 +30,17 @@ function EditKeyDialog({
             toaster.create({ type: "error", title: "Edit Key Failed", description: error, closable: true });
         },
     });
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose]);
 
     return (
         <Dialog.Root modal={true} open={true}>

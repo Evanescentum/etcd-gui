@@ -1,4 +1,4 @@
-import { useState, ChangeEvent } from "react";
+import { useState, useEffect, ChangeEvent } from "react";
 import { putEtcdItem } from "../../api/etcd";
 import { Button, CloseButton, Dialog, Field, Input, Textarea, VStack } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
@@ -29,6 +29,17 @@ function AddKeyDialog({
             toaster.create({ type: "error", title: "Add Key Failed", description: error, closable: true });
         },
     });
+
+    useEffect(() => {
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === "Escape") {
+                onClose();
+            }
+        };
+
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [onClose]);
 
     return (
         <Dialog.Root modal={true} open={true}>
