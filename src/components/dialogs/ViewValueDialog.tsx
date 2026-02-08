@@ -120,7 +120,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
         <Dialog.Root open size="xl">
             <Dialog.Backdrop onClick={onClose} />
             <Dialog.Positioner>
-                <Dialog.Content bg="transparent" shadow="none" maxWidth="max-content">
+                <Dialog.Content bg="transparent" shadow="none" maxW="max-content">
                     <Flex align="start" gap={4} justify="center">
                         {/* Main View Window */}
                         <Box
@@ -128,21 +128,22 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                             shadow="lg"
                             borderRadius="xl"
                             width={showHistory ? "38rem" : "50rem"}
+                            maxH="calc(100vh - 8rem)"
                             transition="width 0.3s cubic-bezier(0.4, 0, 0.2, 1)"
                             position="relative"
                             borderWidth="1px"
                         >
-                            <Dialog.Header p={4} display="inline-flex" justifyContent="space-between" width="100%">
+                            <Dialog.Header p={4} width="100%" display="inline-flex" justifyContent="space-between">
                                 <Dialog.Title>View Value</Dialog.Title>
                                 <CloseButton size="sm" onClick={onClose}> <HiX /></CloseButton>
                             </Dialog.Header>
-                            <Dialog.Body marginTop={0} pb={4}>
+                            <Dialog.Body marginTop={0} pb={4} overflowY="auto">
                                 <Field.Root>
                                     <Field.Label>Key</Field.Label>
-                                    <AnnotatedText text={keyToView} borderWidth="1px" borderRadius="md" padding={2} width="100%" fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="anywhere" />
+                                    <AnnotatedText width="100%" text={keyToView} borderWidth="1px" borderRadius="md" padding={2} fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap" overflowWrap="anywhere" />
                                 </Field.Root>
                                 <Field.Root marginTop={2} maxHeight="50vh">
-                                    <HStack justify="space-between" align="center">
+                                    <HStack placeSelf="stretch" justify="space-between">
                                         <Field.Label>
                                             Value {textPatternIndicator}
                                         </Field.Label>
@@ -150,7 +151,6 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                             size="sm"
                                             variant="subtle"
                                             onClick={() => handleCopyValue(pretty)}
-                                            alignSelf="flex-end"
                                         >
                                             <LuCopy />
                                         </IconButton>
@@ -162,7 +162,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                         width="100%"
                                         overflowY="auto"
                                     >
-                                        <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" display="block" />
+                                        <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" />
                                     </Box>
                                 </Field.Root>
                             </Dialog.Body>
@@ -196,9 +196,9 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                             width={showHistory ? "25rem" : "0rem"}
                             opacity={showHistory ? 1 : 0}
                             borderWidth={showHistory ? "1px" : "0px"}
-                            minHeight="25rem"
+                            maxH="calc(100vh - 8rem)"
                         >
-                            <Box p={3} display={showHistory ? "block" : "none"}>
+                            <Box p={3}>
                                 <HStack justify="space-between" mb={4}>
                                     <Heading size="sm">Metadata & History</Heading>
                                     <IconButton
