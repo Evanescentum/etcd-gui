@@ -441,6 +441,10 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           valueToView={dialogState.value}
           item={dialogState.item}
           onClose={() => setDialogState(null)}
+          onNavigate={(path) => {
+            setKeyPrefix(path);
+            setCurrentPage(1);
+          }}
         />
       )}
 

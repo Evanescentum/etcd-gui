@@ -7,20 +7,24 @@ import { LuCopy, LuHistory, LuChevronLeft, LuChevronRight, LuChevronsRight } fro
 import { EtcdItem, getKeyAtRevision } from "../../api/etcd";
 import { useDebounce } from "use-debounce";
 import AnnotatedText from "../AnnotatedText";
+import PathSelectionButton from "../PathSelectionButton";
 
 interface ViewValueDialogProps {
     keyToView: string;
     valueToView: string;
     item?: EtcdItem;
     onClose: () => void;
+    onNavigate?: (path: string) => void;
 }
 
-function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDialogProps) {
+function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: ViewValueDialogProps) {
     const [showHistory, setShowHistory] = useState(false);
     const [historyStack, setHistoryStack] = useState<EtcdItem[]>([]);
     const [historyIndex, setHistoryIndex] = useState(0);
     const [loadingHistory, setLoadingHistory] = useState(false);
     const [showSpinner] = useDebounce(loadingHistory, 200);
+    const [selectedPath, setSelectedPath] = useState<string | null>(null);
+    const [buttonPosition, setButtonPosition] = useState<{ x: number; y: number } | null>(null);
 
     // Initialize history stack with current item
     useEffect(() => {
@@ -40,6 +44,29 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [onClose]);
+
+    const handleTextSelection = () => {
+        const selection = window.getSelection();
+        if (!selection || selection.isCollapsed) {
+            setSelectedPath(null);
+            setButtonPosition(null);
+            return;
+        }
+
+        const selectedText = selection.toString().trim();
+        if (selectedText.startsWith('/') && selectedText.length > 1) {
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            setButtonPosition({
+                x: rect.right + 8,
+                y: rect.top - 36,
+            });
+            setSelectedPath(selectedText);
+        } else {
+            setSelectedPath(null);
+            setButtonPosition(null);
+        }
+    };
 
     const currentHistoryItem = historyStack[historyIndex];
 
@@ -161,6 +188,11 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                                         padding={2}
                                         width="100%"
                                         overflowY="auto"
+                                        onMouseUp={handleTextSelection}
+                                        onScroll={() => {
+                                            setSelectedPath(null);
+                                            setButtonPosition(null);
+                                        }}
                                     >
                                         <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" />
                                     </Box>
@@ -169,6 +201,18 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose }: ViewValueDia
                             <Dialog.Footer>
                                 <Button onClick={onClose}>Close</Button>
                             </Dialog.Footer>
+
+                            {/* Path Selection Button */}
+                            {selectedPath && buttonPosition && onNavigate && (
+                                <PathSelectionButton
+                                    selectedText={selectedPath}
+                                    position={buttonPosition}
+                                    onNavigate={(path) => {
+                                        onNavigate(path);
+                                        onClose();
+                                    }}
+                                />
+                            )}
 
                             {/* Toggle History Button (Outside) */}
                             {item && !showHistory && (
