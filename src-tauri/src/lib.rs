@@ -10,8 +10,9 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use tauri::webview::cookie::time::format_description::well_known::Rfc3339;
 use tauri::{Manager, State};
-use tauri_plugin_log::{Target, TargetKind};
+use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tokio::sync::Mutex;
 
 #[derive(Serialize)]
@@ -496,9 +497,22 @@ pub fn run() {
                         file_name: "app".to_string().into(),
                     }),
                 ])
+                .format(move |out, message, record| {
+                    out.finish(format_args!(
+                        "{}[{}][{}][{}:{}] {}",
+                        TimezoneStrategy::UseLocal
+                            .get_now()
+                            .format(&Rfc3339)
+                            .unwrap(),
+                        record.level(),
+                        record.target(),
+                        record.file().unwrap_or("unknown"),
+                        record.line().unwrap_or(0),
+                        message
+                    ))
+                })
                 .max_file_size(1024 * 1024) // 1 MB
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(20))
-                .timezone_strategy(tauri_plugin_log::TimezoneStrategy::UseLocal)
                 .build(),
         )
         .plugin(tauri_plugin_clipboard_manager::init())

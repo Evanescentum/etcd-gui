@@ -26,15 +26,19 @@ import { useDebounce } from "use-debounce";
 import { openLogFolder } from "@/api/etcd";
 import { toaster } from "../ui/toaster";
 
-const LOG_REGEX = /^\[([^\]]*)\]\[([^\]]*)\]\[([^\]]*)\]\[([^\]]*)\]\s+(.*)$/;
+const LOG_REGEX = /^([^\[]+)\[([^\]]*)\]\[([^\]]*)\]\[([^\]]*)\]\s+(.*)$/;
 
 const parseLogLine = (line: string) => {
     const match = line.match(LOG_REGEX);
     if (!match) return null;
 
-    const [, date, time, level, target, message] = match;
+    const [, timestamp, level, target, location, message] = match;
 
-    return { date, time, level, target, message };
+    // Parse ISO 8601 timestamp to separate date and time
+    const date = timestamp.substring(0, 10); // 2026-02-09
+    const time = timestamp.substring(11, 19); // 01:30:27
+
+    return { date, time, level, target, location, message };
 };
 
 const LogItem = memo(({ line }: { line: string }) => {
@@ -48,7 +52,7 @@ const LogItem = memo(({ line }: { line: string }) => {
         );
     }
 
-    const { date, time, level, target, message } = parsed;
+    const { date, time, level, target, location, message } = parsed;
 
     const levelColor = {
         INFO: "green",
@@ -68,6 +72,9 @@ const LogItem = memo(({ line }: { line: string }) => {
             </Badge>
             <Text color="fg.subtle" fontSize="xs" fontWeight="bold">
                 [{target}]
+            </Text>
+            <Text color="fg.muted" fontSize="xs" whiteSpace="nowrap">
+                [{location}]
             </Text>
             <Text flex="1" color={level === "ERROR" ? "red.fg" : "fg.default"}>
                 {message}
