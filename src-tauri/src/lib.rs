@@ -300,6 +300,18 @@ async fn open_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+async fn open_log_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
+    // Get the log directory path
+    let log_dir = app_handle
+        .path()
+        .app_log_dir()
+        .map_err(|e| format!("Failed to get log directory path: {}", e))?;
+
+    // Open the folder with the default application
+    open::that(log_dir).map_err(|e| format!("Failed to open log folder: {}", e))
+}
+
+#[tauri::command]
 async fn save_path_history(
     path: String,
     profile_name: String,
@@ -508,6 +520,7 @@ pub fn run() {
             open_config_file,
             open_config_folder,
             open_devtools,
+            open_log_folder,
             save_path_history,
             get_path_history,
             delete_path_history,

@@ -191,6 +191,18 @@ export async function openConfigFolder(): Promise<void> {
 }
 
 /**
+ * Open the log folder in the default file explorer
+ */
+export async function openLogFolder(): Promise<void> {
+    try {
+        await invoke<void>('open_log_folder');
+    } catch (error) {
+        console.error('Error opening log folder:', error);
+        throw error;
+    }
+}
+
+/**
  * Test connection to etcd server with provided profile
  * @param profile The profile to test connection with
  * @returns Etcd server version

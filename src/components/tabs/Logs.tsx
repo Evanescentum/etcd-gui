@@ -19,10 +19,12 @@ import {
     Portal,
 } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
-import { LuTriangleAlert, LuPause, LuPlay, LuTrash2, LuArrowDown, LuBrackets, LuSearch } from "react-icons/lu";
+import { LuTriangleAlert, LuPause, LuPlay, LuTrash2, LuArrowDown, LuBrackets, LuSearch, LuFolderOpen } from "react-icons/lu";
 import { attachLogger } from "@tauri-apps/plugin-log"
 import { useStickToBottom } from "use-stick-to-bottom";
 import { useDebounce } from "use-debounce";
+import { openLogFolder } from "@/api/etcd";
+import { toaster } from "../ui/toaster";
 
 const LOG_REGEX = /^\[([^\]]*)\]\[([^\]]*)\]\[([^\]]*)\]\[([^\]]*)\]\s+(.*)$/;
 
@@ -171,6 +173,18 @@ function Logs() {
         }
     };
 
+    const handleOpenLogFolder = async () => {
+        try {
+            await openLogFolder();
+        } catch {
+            toaster.create({
+                title: "Error",
+                description: "Failed to open log folder",
+                type: "error"
+            });
+        }
+    };
+
     const emptyState = () => {
         return (
             <EmptyState.Root>
@@ -260,6 +274,9 @@ function Logs() {
                     </Button>
                     <Button size="xs" variant="ghost" colorPalette="red" onClick={() => { setLogs([]); }}>
                         <LuTrash2 /> Clear
+                    </Button>
+                    <Button size="xs" variant="outline" onClick={handleOpenLogFolder}>
+                        <LuFolderOpen /> Open Folder
                     </Button>
                 </HStack>
             </Flex>
