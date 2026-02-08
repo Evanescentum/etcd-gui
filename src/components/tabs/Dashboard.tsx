@@ -111,6 +111,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     data: pageRangeItems = [],
     isError: isValuesError,
     error: valuesError,
+    refetch: refetchValues,
     isFetching: isFetchingValues,
   } = useEtcdValuesInRangeQuery({
     keys: pageKeys,
@@ -420,7 +421,10 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={refetchKeys}
+          refetch={() => {
+            refetchKeys();
+            refetchValues();
+          }}
         />
       )}
 
