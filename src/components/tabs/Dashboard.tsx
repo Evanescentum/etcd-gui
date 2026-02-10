@@ -119,7 +119,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   // Add delayed loading state to prevent UI flashing for quick operations
   const fetchingNumber = useIsFetching();
   const isFetching = fetchingNumber > 0;
-  const [delayedLoading] = useDebounce(isFetching, 800);
+  const [delayedFetching] = useDebounce(isFetching, 800);
 
 
   // Dialog state
@@ -169,7 +169,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
               }}
               profileName={currentProfileName}
               onRefresh={refetch}
-              loading={delayedLoading}
+              loading={isFetching}
             />
 
             {/* Search and actions */}
@@ -181,7 +181,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                 <InputGroup endElement={searchEndElement} flex="1">
                   <Input
                     {...codeInputProps}
-                    placeholder="Search keys..."
+                    placeholder={kvLoadMethod === "Lazy" ? "Search keys..." : "Search keys and values..."}
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -215,7 +215,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {delayedLoading || (isFetching && data.length === 0) ? (
+            {delayedFetching || (isFetching && data.length === 0) ? (
               // Loading skeletons - show if delayedLoading or if actually loading with no data
               Array.from({ length: 5 }).map((_, index) => (
                 <Table.Row key={`skeleton-${index}`}>
@@ -331,7 +331,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
             </Select.Positioner>
           </Portal>
         </Select.Root>
-        <Skeleton loading={delayedLoading} borderRadius="md">
+        <Skeleton loading={delayedFetching} borderRadius="md">
           <Pagination.Root
             count={total}
             pageSize={pageSize}
@@ -368,10 +368,10 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
 
       {/* Status bar */}
       <HStack margin={2}>
-        <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
+        <Skeleton loading={delayedFetching} display="inline-block" minW="20px">
           <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
         </Skeleton>
-        <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
+        <Skeleton loading={delayedFetching} display="inline-block" minW="20px">
           <Badge>{total} keys found</Badge>
         </Skeleton>
         {searchQuery && (
@@ -386,7 +386,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
             <Status.Root colorPalette="blue">
               <Status.Indicator /> Typing...
             </Status.Root>
-            : delayedLoading ?
+            : isFetching ?
               <Status.Root colorPalette="yellow">
                 <Status.Indicator /> Loading...
               </Status.Root> :
