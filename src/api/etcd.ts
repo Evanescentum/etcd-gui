@@ -21,6 +21,7 @@ export interface AppConfig {
     color_theme: 'Light' | 'Dark' | 'System';
     font_family_body?: string;
     font_family_mono?: string;
+    kv_load_method: "Lazy" | "Full";
     log_file_path?: string;
 }
 
@@ -54,8 +55,8 @@ export async function initializeEtcdClient(): Promise<boolean> {
  */
 export async function fetchEtcdItems(prefix: string = '/'): Promise<EtcdItem[]> {
     try {
-        // Call the Rust list_keys command with the specified prefix
-        const items = await invoke<EtcdItem[]>('list_keys', { prefix });
+        // Call the Rust list_items command with the specified prefix
+        const items = await invoke<EtcdItem[]>('list_items', { prefix });
         return items;
     } catch (error) {
         console.error('Error fetching etcd items:', error);

@@ -21,7 +21,7 @@ import {
 import type { AppConfig } from "../../api/etcd";
 import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
-import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug } from "react-icons/lu";
+import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug, LuZap, LuDatabase } from "react-icons/lu";
 import { Tooltip } from "../ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 
@@ -246,6 +246,11 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
     { value: "System", label: (<HStack><LuMonitor /> System Default</HStack>) }
   ];
 
+  const queryModeOptions = [
+    { value: "Lazy", label: (<HStack><LuZap /> <Text>Lazy Load</Text></HStack>) },
+    { value: "Full", label: (<HStack><LuDatabase /> <Text>Full Load</Text></HStack>) }
+  ];
+
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
 
   useEffect(() => {
@@ -267,14 +272,14 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
           <ScrollArea.Content>
             <Box p={6} maxW="800px" mx="auto">
               <VStack gap={6} align="stretch">
-                <Heading size="lg">Settings</Heading>
+                <Heading size="xl">Settings</Heading>
 
                 <ConfigFileSection />
 
                 <form onSubmit={handleSubmit(onSubmit)}>
                   <Card.Root>
                     <Card.Body gap={4}>
-                      <Heading size="md">Appearance</Heading>
+                      <Heading>Appearance</Heading>
                       <Separator />
                       <Box fontSize="sm">
                         <Text fontWeight="medium" mb={2}>Color Theme</Text>
@@ -349,6 +354,24 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
                                 </Select.Content>
                               </Select.Positioner>
                             </Select.Root>
+                          )}
+                        />
+                      </Box>
+                      <Heading mt={6}>General</Heading>
+                      <Separator />
+                      <Box fontSize="sm">
+                        <Text fontWeight="medium" mb={2}>Query Mode</Text>
+                        <Text fontSize="xs" color="fg.muted" mb={3}>
+                          Lazy load mode offers better performance for large datasets; Full load mode enables searching within values.
+                        </Text>
+                        <Controller
+                          name="kv_load_method"
+                          control={control}
+                          render={({ field }) => (
+                            <SegmentGroup.Root value={String(field.value)} onValueChange={(e) => field.onChange(e.value)}>
+                              <SegmentGroup.Indicator />
+                              <SegmentGroup.Items items={queryModeOptions} />
+                            </SegmentGroup.Root>
                           )}
                         />
                       </Box>

@@ -8,6 +8,20 @@ pub struct AppConfig {
     pub color_theme: ColorTheme,
     pub font_family_body: Option<String>,
     pub font_family_mono: Option<String>,
+    #[serde(default)]
+    pub kv_load_method: KvLoadMethod,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub enum KvLoadMethod {
+    Lazy,
+    Full,
+}
+
+impl Default for KvLoadMethod {
+    fn default() -> Self {
+        KvLoadMethod::Lazy
+    }
 }
 
 // A profile defines the connection information for a client to connect to etcd
@@ -42,6 +56,7 @@ impl Default for AppConfig {
             color_theme: ColorTheme::System,
             font_family_body: None,
             font_family_mono: None,
+            kv_load_method: KvLoadMethod::Lazy,
         }
     }
 }

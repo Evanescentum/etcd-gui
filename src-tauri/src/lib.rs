@@ -59,14 +59,14 @@ async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<boo
 }
 
 #[tauri::command]
-async fn list_keys(
+async fn list_items(
     prefix: String,
     state: State<'_, Mutex<AppState>>,
 ) -> Result<Vec<client::Item>, String> {
     log::debug!("Listing keys with prefix: {}", prefix);
     // Call the client function with the provided prefix
     let mut state = state.lock().await;
-    core::list_keys(&prefix, &mut state)
+    core::list_items(&prefix, &mut state)
         .await
         .inspect_err(|e| log::error!("Failed to list keys: {}", e))
 }
@@ -520,7 +520,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             initialize_etcd_client,
-            list_keys,
+            list_items,
             list_keys_only,
             get_values_in_range,
             put_key,

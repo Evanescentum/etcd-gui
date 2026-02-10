@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useEtcdKeysOnlyQuery, useEtcdValuesInRangeQuery } from "../../hooks/useEtcdQuery";
+import { useLazyValueEtcdItemsQuery, useEtcdItemsQuery } from "../../hooks/useEtcdQuery";
 import {
   Box,
   ButtonGroup,
@@ -34,6 +34,7 @@ import EditKeyDialog from "../dialogs/EditKeyDialog";
 import ViewValueDialog from "../dialogs/ViewValueDialog";
 import PathInput from "../PathInput";
 import { useDebounce } from "use-debounce";
+import { useIsFetching } from "@tanstack/react-query";
 
 // Tooltip component for table cells
 const TableRowTooltip = ({
@@ -85,45 +86,40 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
       { label: "100/page", value: "100" },
     ]
   });
-  // Step 1: keys-only list for counts and pagination
-  const {
-    data: allKeys = [],
-    isError: isKeysError,
-    error: keysError,
-    refetch: refetchKeys,
-    isFetching: isFetchingKeys,
-  } = useEtcdKeysOnlyQuery({ keyPrefix: debouncedKeyPrefix, currentProfileName, configLoading });
 
-  // Derived filtered keys for search
-  const filteredKeys = useMemo(() => {
-    if (!searchQuery) return allKeys;
-    return allKeys.filter(k => k.includes(searchQuery));
-  }, [allKeys, searchQuery]);
+  // Use different query strategies based on config
+  const kvLoadMethod = appConfig.kv_load_method;
 
-  // Pagination slice of keys
-  const pageKeys = useMemo(() => {
-    const startIndex = (currentPage - 1) * pageSize;
-    return filteredKeys.slice(startIndex, startIndex + pageSize);
-  }, [filteredKeys, currentPage, pageSize]);
-
-  // Step 2: fetch values for range [firstKey, lastKey] on the current page
-  const {
-    data: pageRangeItems = [],
-    isError: isValuesError,
-    error: valuesError,
-    refetch: refetchValues,
-    isFetching: isFetchingValues,
-  } = useEtcdValuesInRangeQuery({
-    keys: pageKeys,
+  const lazyQueryResult = useLazyValueEtcdItemsQuery({
+    enabled: !configLoading && kvLoadMethod === "Lazy",
+    keyPrefix: debouncedKeyPrefix,
     currentProfileName,
-    enabled: !configLoading && pageKeys.length > 0,
+    searchQuery,
+    currentPage,
+    pageSize
   });
+
+  const fullQueryResult = useEtcdItemsQuery({
+    enabled: !configLoading && kvLoadMethod === "Full",
+    keyPrefix: debouncedKeyPrefix,
+    currentProfileName,
+    searchQuery,
+    currentPage,
+    pageSize
+  });
+
+  // Select the appropriate query result based on config
+  const {
+    data,
+    total,
+    loadError,
+    refetch,
+  } = kvLoadMethod === "Lazy" ? lazyQueryResult : fullQueryResult;
+
   // Add delayed loading state to prevent UI flashing for quick operations
-  const [delayedLoading] = useDebounce(isFetchingKeys || isFetchingValues, 800);
-  const isTyping = keyPrefix !== debouncedKeyPrefix; // User is still typing
-  const isActuallyLoading = isFetchingKeys || isFetchingValues; // Real loading state
-  const loadError = (isKeysError ? (typeof keysError === "string" ? keysError : (keysError instanceof Error ? keysError.message : "Unknown error")) : null)
-    || (isValuesError ? (typeof valuesError === "string" ? valuesError : (valuesError instanceof Error ? valuesError.message : "Unknown error")) : null);
+  const fetchingNumber = useIsFetching();
+  const isFetching = fetchingNumber > 0;
+  const [delayedLoading] = useDebounce(isFetching, 800);
 
 
   // Dialog state
@@ -133,12 +129,6 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     value: string,
     item?: EtcdItem
   } | null>(null);
-
-  // Pagination
-  const paginatedData = useMemo(() => {
-    const set = new Set(pageKeys);
-    return pageRangeItems.filter(i => set.has(i.key)); // In case of getting extra keys during value fetching
-  }, [pageRangeItems, pageKeys]);
 
   // Define the end element for search input
   const searchEndElement = searchQuery ? (
@@ -178,7 +168,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                 setCurrentPage(1);
               }}
               profileName={currentProfileName}
-              onRefresh={refetchKeys}
+              onRefresh={refetch}
               loading={delayedLoading}
             />
 
@@ -225,7 +215,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {delayedLoading || (isActuallyLoading && paginatedData.length === 0) ? (
+            {delayedLoading || (isFetching && data.length === 0) ? (
               // Loading skeletons - show if delayedLoading or if actually loading with no data
               Array.from({ length: 5 }).map((_, index) => (
                 <Table.Row key={`skeleton-${index}`}>
@@ -243,9 +233,9 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                   </Table.Cell>
                 </Table.Row>
               ))
-            ) : paginatedData.length > 0 ? (
+            ) : data.length > 0 ? (
               // Actual data rows
-              paginatedData.map((item) => (
+              data.map((item) => (
                 <Table.Row key={item.key}>
                   <Table.Cell maxWidth={200}>
                     <TableRowTooltip content={item.key} maxWidth="35vw">
@@ -343,7 +333,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         </Select.Root>
         <Skeleton loading={delayedLoading} borderRadius="md">
           <Pagination.Root
-            count={filteredKeys.length}
+            count={total}
             pageSize={pageSize}
             page={currentPage}
             onPageChange={(details) => { setCurrentPage(details.page); }}
@@ -382,7 +372,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
         </Skeleton>
         <Skeleton loading={delayedLoading} display="inline-block" minW="20px">
-          <Badge>{filteredKeys.length} keys found</Badge>
+          <Badge>{total} keys found</Badge>
         </Skeleton>
         {searchQuery && (
           <Badge colorPalette="blue">Search: "{searchQuery}"</Badge>
@@ -392,7 +382,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           <Status.Root colorPalette="red">
             <Status.Indicator /> Connection Error
           </Status.Root>
-          : isTyping ?
+          : keyPrefix !== debouncedKeyPrefix ?
             <Status.Root colorPalette="blue">
               <Status.Indicator /> Typing...
             </Status.Root>
@@ -411,7 +401,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
         <AddKeyDialog
           defaultKeyPrefix={keyPrefix}
           onClose={() => setDialogState(null)}
-          refetch={refetchKeys}
+          refetch={refetch}
         />
       )}
 
@@ -422,8 +412,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           valueToEdit={dialogState.value}
           onClose={() => setDialogState(null)}
           refetch={() => {
-            refetchKeys();
-            refetchValues();
+            refetch();
           }}
         />
       )}
@@ -434,7 +423,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
           keyToDelete={dialogState.key}
           valueToDelete={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={refetchKeys}
+          refetch={refetch}
         />
       )}
 
