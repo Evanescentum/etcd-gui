@@ -37,32 +37,28 @@ import { useDebounce } from "use-debounce";
 import { useIsFetching } from "@tanstack/react-query";
 
 // Tooltip component for table cells
-const TableRowTooltip = ({
-  content,
-  maxWidth,
-  children
-}: {
-  content: string,
-  maxWidth: string,
-  children: React.ReactNode
-}) => {
+const TableRowTooltip = (props: { content: string, maxWidth: string, children: React.ReactNode }) => {
   return (
     <Tooltip
-      content={<Text fontFamily="mono">{content}</Text>}
+      content={<Text fontFamily="mono">{props.content}</Text>}
       openDelay={200}
       interactive
-      contentProps={{
-        width: "100%",
-        maxWidth,
-        bg: "bg.panel",
-        color: "fg",
-        borderColor: "gray.200"
-      }}
+      contentProps={{ width: "100%", maxWidth: props.maxWidth, bg: "bg.panel", color: "fg", borderColor: "gray.200" }}
     >
-      {children}
+      {props.children}
     </Tooltip>
   );
 };
+
+const pageSizeCollection = createListCollection({
+  items: [
+    { label: "5/page", value: "5" },
+    { label: "10/page", value: "10" },
+    { label: "20/page", value: "20" },
+    { label: "50/page", value: "50" },
+    { label: "100/page", value: "100" },
+  ]
+});
 
 interface DashboardProps {
   configLoading: boolean;
@@ -77,15 +73,6 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
-  const pageSizeCollection = createListCollection({
-    items: [
-      { label: "5/page", value: "5" },
-      { label: "10/page", value: "10" },
-      { label: "20/page", value: "20" },
-      { label: "50/page", value: "50" },
-      { label: "100/page", value: "100" },
-    ]
-  });
 
   // Use different query strategies based on config
   const kvLoadMethod = appConfig.kv_load_method;
@@ -116,11 +103,9 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
     refetch,
   } = kvLoadMethod === "Lazy" ? lazyQueryResult : fullQueryResult;
 
-  // Add delayed loading state to prevent UI flashing for quick operations
-  const fetchingNumber = useIsFetching();
-  const isFetching = fetchingNumber > 0;
+  // Fetching state and its debounced version for better UX when loading takes time
+  const isFetching = useIsFetching() > 0;
   const [delayedFetching] = useDebounce(isFetching, 800);
-
 
   // Dialog state
   const [dialogState, setDialogState] = useState<{
