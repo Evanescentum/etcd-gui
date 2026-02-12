@@ -22,7 +22,36 @@ export interface AppConfig {
     font_family_body?: string;
     font_family_mono?: string;
     kv_load_method: "Lazy" | "Full";
+    update_channel: UpdateChannel;
     log_file_path?: string;
+}
+
+export type UpdateChannel = "Stable" | "Beta";
+
+export interface ReleaseInfo {
+    tag_name: string;
+    version: string;
+    name: string;
+    published_at: string | null;
+    body: string;
+    html_url: string;
+    prerelease: boolean;
+}
+
+export interface UpdateCheckResult {
+    channel: UpdateChannel;
+    current_version: string;
+    update_available: boolean;
+    release: ReleaseInfo;
+}
+
+export async function checkUpdate(channel: UpdateChannel): Promise<UpdateCheckResult> {
+    try {
+        return await invoke<UpdateCheckResult>('check_update', { channel });
+    } catch (error) {
+        console.error('Error checking update:', error);
+        throw error;
+    }
 }
 
 export interface Profile {

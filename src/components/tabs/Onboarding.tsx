@@ -166,7 +166,9 @@ function Onboarding({ onComplete }: OnboardingProps) {
       const config: AppConfig = {
         profiles: [profile],
         current_profile: profile.name,
-        color_theme: 'System'
+        color_theme: 'System',
+        kv_load_method: "Lazy",
+        update_channel: "Stable",
       };
 
       // Handle auth

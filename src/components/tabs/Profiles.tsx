@@ -154,10 +154,9 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       setLoading(true);
 
       let newConfig: AppConfig = {
-        color_theme: config.color_theme,
-        current_profile: config.current_profile,
-        profiles: config.profiles
-      }
+        ...config,
+        profiles: [...config.profiles],
+      };
 
       // Find existing profiles that should be updated, or -1 if new profile should be added
       const existingIndex = config.profiles.findIndex(p => p.name === (selectedProfile.originalName ?? profile.name));

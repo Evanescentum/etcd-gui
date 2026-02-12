@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct AppConfig {
     pub profiles: Vec<Profile>,
     pub current_profile: Option<String>,
@@ -10,6 +10,15 @@ pub struct AppConfig {
     pub font_family_mono: Option<String>,
     #[serde(default)]
     pub kv_load_method: KvLoadMethod,
+    #[serde(default)]
+    pub update_channel: UpdateChannel,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default, strum::Display)]
+pub enum UpdateChannel {
+    Stable,
+    #[default] // XXX: Default to Beta for now since Stable doesn't have releases yet
+    Beta,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -41,24 +50,12 @@ pub struct Endpoint {
     pub port: u16,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub enum ColorTheme {
     Light,
     Dark,
+    #[default]
     System,
-}
-
-impl Default for AppConfig {
-    fn default() -> Self {
-        AppConfig {
-            profiles: vec![],
-            current_profile: None,
-            color_theme: ColorTheme::System,
-            font_family_body: None,
-            font_family_mono: None,
-            kv_load_method: KvLoadMethod::Lazy,
-        }
-    }
 }
 
 impl AppConfig {

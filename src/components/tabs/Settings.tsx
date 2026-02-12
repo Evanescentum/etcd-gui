@@ -18,12 +18,13 @@ import {
   createListCollection,
   ScrollArea,
 } from "@chakra-ui/react";
-import type { AppConfig } from "../../api/etcd";
-import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
+import type { AppConfig, UpdateCheckResult } from "../../api/etcd";
+import { checkUpdate, getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug, LuZap, LuDatabase } from "react-icons/lu";
 import { Tooltip } from "../ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import UpdateCheckDialog from "../dialogs/UpdateCheckDialog";
 
 // --- Hooks ---
 
@@ -195,6 +196,9 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
     defaultValues: config,
   });
 
+  const [updateChecking, setUpdateChecking] = useState(false);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+
   // Use custom hook for tab interception
   const { showDialog, confirmNavigation, cancelNavigation } = useUnsavedChanges(isDirty, onBeforeTabChange);
 
@@ -251,6 +255,11 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
     { value: "Full", label: (<HStack><LuDatabase /> <Text>Full Load</Text></HStack>) }
   ];
 
+  const updateChannelOptions = [
+    { value: "Stable", label: (<HStack><Text>Stable</Text></HStack>) },
+    { value: "Beta", label: (<HStack><Text>Beta</Text></HStack>) },
+  ];
+
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
 
   useEffect(() => {
@@ -264,6 +273,23 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
 
   const uiFontCollection = createListCollection({ items: fontItems });
   const codeFontCollection = createListCollection({ items: fontItems });
+
+  const handleCheckUpdate = async () => {
+    setUpdateChecking(true);
+    setUpdateResult(null);
+
+    try {
+      const channel = watch("update_channel");
+      const res = await checkUpdate(channel);
+      setUpdateResult(res);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toaster.create({ title: "Failed to check for updates", description: msg, type: "error", closable: true });
+    } finally {
+      setUpdateChecking(false);
+    }
+  };
+
 
   return (
     <>
@@ -375,6 +401,29 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
                           )}
                         />
                       </Box>
+
+                      <Box fontSize="sm" mt={4}>
+                        <Text fontWeight="medium" mb={2}>Update Channel</Text>
+                        <Text fontSize="xs" color="fg.muted" mb={3}>
+                          Stable checks only official releases; Beta also includes pre-releases.
+                        </Text>
+                        <Controller
+                          name="update_channel"
+                          control={control}
+                          render={({ field }) => (
+                            <SegmentGroup.Root value={String(field.value)} onValueChange={(e) => field.onChange(e.value)}>
+                              <SegmentGroup.Indicator />
+                              <SegmentGroup.Items items={updateChannelOptions} />
+                            </SegmentGroup.Root>
+                          )}
+                        />
+                      </Box>
+
+                      <Box fontSize="sm" mt={3}>
+                        <Button size="sm" variant="outline" type="button" onClick={handleCheckUpdate} loading={updateChecking}>
+                          <HStack><LuZap /><Text>Check for updates</Text></HStack>
+                        </Button>
+                      </Box>
                     </Card.Body>
                     <Card.Footer justifyContent="flex-end">
                       <Button type="submit" disabled={!isDirty} loading={isSubmitting}>Save Changes</Button>
@@ -397,6 +446,14 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
         onDiscard={handleDiscardAndContinue}
         onSave={handleSaveAndContinue}
       />
+
+      {updateResult !== null && (
+        <UpdateCheckDialog
+          onClose={() => setUpdateResult(null)}
+          result={updateResult}
+        />
+      )}
+
     </>
   );
 }

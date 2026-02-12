@@ -2,6 +2,7 @@ mod client;
 mod config;
 mod core;
 mod state;
+mod update;
 
 use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::Serialize;
@@ -14,6 +15,21 @@ use tauri::webview::cookie::time::format_description::well_known::Rfc3339;
 use tauri::{Manager, State};
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tokio::sync::Mutex;
+
+#[tauri::command]
+async fn check_update(
+    app_handle: tauri::AppHandle,
+    channel: config::UpdateChannel,
+) -> Result<update::UpdateCheckResult, String> {
+    let current_version = app_handle.package_info().version.clone();
+    // let current_version = semver::Version::new(0, 8, 0); // TODO: debug
+
+    log::info!("Checking update on GitHub (channel={channel}, current={current_version})");
+
+    update::check_update(channel, current_version)
+        .await
+        .inspect_err(|e| log::error!("Update check failed: {e}"))
+}
 
 #[derive(Serialize)]
 struct FormattedTimestamp {
@@ -540,7 +556,8 @@ pub fn run() {
             delete_path_history,
             get_system_fonts,
             get_key_at_revision,
-            format_timestamp
+            format_timestamp,
+            check_update
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));
