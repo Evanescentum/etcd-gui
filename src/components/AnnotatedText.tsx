@@ -1,9 +1,54 @@
-import { Text, TextProps } from "@chakra-ui/react";
-import { isValidTimestamp } from "../utils/timestamp";
-import TimestampChip from "./TimestampChip";
+import { DataList, Heading, HoverCard, HStack, Mark, Text, TextProps } from "@chakra-ui/react";
+import { useQuery } from "@tanstack/react-query";
+import { formatTimestamp } from "../api/etcd";
+import { isValidTimestamp, parseTimestamp } from "../utils/timestamp";
 
 interface AnnotatedTextProps extends TextProps {
     text: string;
+}
+
+interface TimestampMarkProps {
+    timestamp: string;
+    fontSize?: TextProps["fontSize"];
+}
+
+function TimestampMark({ timestamp, fontSize }: TimestampMarkProps) {
+    const { data: formattedTime } = useQuery({
+        queryKey: ["timestamp", timestamp],
+        queryFn: () => formatTimestamp(parseTimestamp(timestamp)),
+        staleTime: Infinity,
+    });
+
+    return (
+        <HoverCard.Root openDelay={300} positioning={{ placement: "top" }}>
+            <HoverCard.Trigger asChild>
+                <Mark px={1} colorPalette="blue" variant="subtle" fontSize={fontSize}>
+                    {timestamp}
+                </Mark>
+            </HoverCard.Trigger>
+            <HoverCard.Positioner>
+                <HoverCard.Content>
+                    <HoverCard.Arrow>
+                        <HoverCard.ArrowTip />
+                    </HoverCard.Arrow>
+                    <HStack gap={1.5} align="center">
+                        <Heading fontSize="xs" fontWeight="bold" lineHeight="1.5">Timestamp</Heading>
+                        <Heading fontSize="xs">{timestamp}</Heading>
+                    </HStack>
+                    <DataList.Root orientation="horizontal" size="sm" mt={2}>
+                        <DataList.Item>
+                            <DataList.ItemLabel width="3em" minW="0">Local</DataList.ItemLabel>
+                            <DataList.ItemValue>{formattedTime?.local ?? "Loading..."}</DataList.ItemValue>
+                        </DataList.Item>
+                        <DataList.Item>
+                            <DataList.ItemLabel width="3em" minW="0">UTC</DataList.ItemLabel>
+                            <DataList.ItemValue>{formattedTime?.utc ?? "Loading..."}</DataList.ItemValue>
+                        </DataList.Item>
+                    </DataList.Root>
+                </HoverCard.Content>
+            </HoverCard.Positioner>
+        </HoverCard.Root>
+    );
 }
 
 /**
@@ -11,61 +56,22 @@ interface AnnotatedTextProps extends TextProps {
  * with interactive tooltips showing formatted dates
  */
 function AnnotatedText({ text, fontSize, ...props }: AnnotatedTextProps) {
-    // Regular expression to match potential timestamps (10 or 13 digits)
-    const timestampRegex = /\b(\d{10}|\d{13})\b/g;
+    const parts = text.split(/(\b(?:\d{10}|\d{13})\b)/g);
 
-    // Split text into parts, preserving the matched timestamps
-    const parts: { text: string; isTimestamp: boolean }[] = [];
-    let lastIndex = 0;
-    let match;
-
-    while ((match = timestampRegex.exec(text)) !== null) {
-        // Add text before the match
-        if (match.index > lastIndex) {
-            parts.push({
-                text: text.slice(lastIndex, match.index),
-                isTimestamp: false
-            });
-        }
-
-        // Validate and add the potential timestamp
-        const potentialTimestamp = match[0];
-        if (isValidTimestamp(potentialTimestamp)) {
-            parts.push({
-                text: potentialTimestamp,
-                isTimestamp: true
-            });
-        } else {
-            // Not a valid timestamp, treat as regular text
-            parts.push({
-                text: potentialTimestamp,
-                isTimestamp: false
-            });
-        }
-
-        lastIndex = match.index + match[0].length;
-    }
-
-    // Add remaining text after the last match
-    if (lastIndex < text.length) {
-        parts.push({
-            text: text.slice(lastIndex),
-            isTimestamp: false
-        });
-    }
-
-    // If no parts were created, it means no matches were found
-    if (parts.length === 0) {
+    if (parts.length <= 1) {
         return <Text fontSize={fontSize} {...props}>{text}</Text>;
     }
 
     return (
         <Text fontSize={fontSize} {...props}>
             {parts.map((part, index) => {
-                if (part.isTimestamp) {
-                    return <TimestampChip key={index} timestamp={part.text} fontSize={fontSize} />;
+                if (!part) {
+                    return null;
                 }
-                return <Text key={index} as="span">{part.text}</Text>;
+                if (isValidTimestamp(part)) {
+                    return <TimestampMark key={index} timestamp={part} fontSize={fontSize} />;
+                }
+                return <Text key={index} as="span">{part}</Text>;
             })}
         </Text>
     );
