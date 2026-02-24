@@ -67,6 +67,8 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
         return filteredKeys.slice(startIndex, startIndex + pageSize);
     }, [filteredKeys, currentPage, pageSize]);
 
+    const pagedKeysSet = useMemo(() => new Set(paginatedKeys), [paginatedKeys]);
+
     const valuesInRangeQuery = useQuery({
         queryKey: ["etcd-values-in-range", currentProfileName, paginatedKeys],
         queryFn: async () => await fetchValuesInRange(paginatedKeys[0], paginatedKeys[paginatedKeys.length - 1]),
@@ -74,7 +76,7 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
     })
 
     return {
-        data: valuesInRangeQuery.data || [],
+        data: valuesInRangeQuery.data?.filter(item => pagedKeysSet.has(item.key)) || [],
         total: filteredKeys.length,
         loadError: valuesInRangeQuery.error ? (valuesInRangeQuery.error.message || "Unknown error") : null,
         refetch: async () => { await keysOnlyQuery.refetch(); },
