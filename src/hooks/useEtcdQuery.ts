@@ -75,10 +75,12 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
         enabled: paginatedKeys.length > 0,
     })
 
+    const lazyLoadError = keysOnlyQuery.error ?? valuesInRangeQuery.error;
+
     return {
         data: valuesInRangeQuery.data?.filter(item => pagedKeysSet.has(item.key)) || [],
         total: filteredKeys.length,
-        loadError: valuesInRangeQuery.error ? (valuesInRangeQuery.error.message || "Unknown error") : null,
+        loadError: lazyLoadError ? (lazyLoadError.message || "Unknown error") : null,
         refetch: async () => { await keysOnlyQuery.refetch(); },
     };
 }
