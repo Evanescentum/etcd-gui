@@ -316,39 +316,37 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
             </Select.Positioner>
           </Portal>
         </Select.Root>
-        <Skeleton loading={delayedFetching} borderRadius="md">
-          <Pagination.Root
-            count={total}
-            pageSize={pageSize}
-            page={currentPage}
-            onPageChange={(details) => { setCurrentPage(details.page); }}
-          >
-            <ButtonGroup variant="ghost" size="sm" wrap="wrap">
-              <Pagination.PrevTrigger asChild>
-                <IconButton aria-label="Previous page">
-                  <LuChevronLeft />
-                </IconButton>
-              </Pagination.PrevTrigger>
+        <Pagination.Root
+          count={total}
+          pageSize={pageSize}
+          page={currentPage}
+          onPageChange={(details) => { setCurrentPage(details.page); }}
+        >
+          <ButtonGroup variant="ghost" size="sm" wrap="wrap">
+            <Pagination.PrevTrigger asChild>
+              <IconButton aria-label="Previous page">
+                <LuChevronLeft />
+              </IconButton>
+            </Pagination.PrevTrigger>
 
-              <Pagination.Items
-                render={(page) => (
-                  <IconButton
-                    aria-label={`Page ${page.value}`}
-                    variant={{ base: "ghost", _selected: "outline" }}
-                  >
-                    {page.value}
-                  </IconButton>
-                )}
-              />
-
-              <Pagination.NextTrigger asChild>
-                <IconButton aria-label="Next page">
-                  <LuChevronRight />
+            <Pagination.Items
+              render={(page) => (
+                <IconButton
+                  aria-label={`Page ${page.value}`}
+                  variant={{ base: "ghost", _selected: "outline" }}
+                >
+                  {page.value}
                 </IconButton>
-              </Pagination.NextTrigger>
-            </ButtonGroup>
-          </Pagination.Root>
-        </Skeleton>
+              )}
+            />
+
+            <Pagination.NextTrigger asChild>
+              <IconButton aria-label="Next page">
+                <LuChevronRight />
+              </IconButton>
+            </Pagination.NextTrigger>
+          </ButtonGroup>
+        </Pagination.Root>
       </Flex>
 
       {/* Status bar */}
