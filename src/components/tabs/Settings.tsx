@@ -18,13 +18,12 @@ import {
   createListCollection,
   ScrollArea,
 } from "@chakra-ui/react";
-import type { AppConfig, UpdateCheckResult } from "../../api/etcd";
-import { checkUpdate, getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
+import type { AppConfig, UpdateCheckSchedule } from "../../api/etcd";
+import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug, LuZap, LuDatabase } from "react-icons/lu";
 import { Tooltip } from "../ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import UpdateCheckDialog from "../dialogs/UpdateCheckDialog";
 
 // --- Hooks ---
 
@@ -186,18 +185,25 @@ const UnsavedChangesDialog = ({ open, onCancel, onDiscard, onSave }: UnsavedChan
 interface SettingsProps {
   config: AppConfig;
   saveConfig: (config: AppConfig) => Promise<void>;
+  updateChecking: boolean;
+  onCheckUpdate: () => Promise<void>;
   onBeforeTabChange?: RefObject<((newTab: string) => Promise<boolean>) | null>;
   onConfigChange?: (config: AppConfig) => void;
   onDiscard?: () => void;
 }
 
-function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDiscard }: SettingsProps) {
+function Settings({
+  config,
+  saveConfig,
+  updateChecking,
+  onCheckUpdate,
+  onBeforeTabChange,
+  onConfigChange,
+  onDiscard,
+}: SettingsProps) {
   const { control, handleSubmit, reset, watch, formState: { isDirty, isSubmitting } } = useForm<AppConfig>({
     defaultValues: config,
   });
-
-  const [updateChecking, setUpdateChecking] = useState(false);
-  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
 
   // Use custom hook for tab interception
   const { showDialog, confirmNavigation, cancelNavigation } = useUnsavedChanges(isDirty, onBeforeTabChange);
@@ -260,6 +266,14 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
     { value: "Beta", label: (<HStack><Text>Beta</Text></HStack>) },
   ];
 
+  const updateScheduleItems: { label: string; value: UpdateCheckSchedule }[] = [
+    { value: "Never", label: "Never" },
+    { value: "Daily", label: "Daily" },
+    { value: "Weekly", label: "Weekly" },
+    { value: "Monthly", label: "Monthly" },
+  ];
+  const updateScheduleCollection = createListCollection({ items: updateScheduleItems });
+
   const [systemFonts, setSystemFonts] = useState<string[]>([]);
 
   useEffect(() => {
@@ -275,18 +289,11 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
   const codeFontCollection = createListCollection({ items: fontItems });
 
   const handleCheckUpdate = async () => {
-    setUpdateChecking(true);
-    setUpdateResult(null);
-
     try {
-      const channel = watch("update_channel");
-      const res = await checkUpdate(channel);
-      setUpdateResult(res);
+      await onCheckUpdate();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toaster.create({ title: "Failed to check for updates", description: msg, type: "error", closable: true });
-    } finally {
-      setUpdateChecking(false);
     }
   };
 
@@ -419,6 +426,38 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
                         />
                       </Box>
 
+                      <Box fontSize="sm" mt={4}>
+                        <Text fontWeight="medium" mb={2}>Auto Update Check</Text>
+                        <Text fontSize="xs" color="fg.muted" mb={3}>
+                          Choose how often to automatically check for updates. Select Never to disable automatic checks.
+                        </Text>
+                        <Controller
+                          name="update_check_schedule"
+                          control={control}
+                          render={({ field }) => (
+                            <Select.Root
+                              collection={updateScheduleCollection}
+                              value={[field.value || "Daily"]}
+                              onValueChange={(e) => field.onChange(e.value[0] as UpdateCheckSchedule)}
+                            >
+                              <Select.Trigger>
+                                <Select.ValueText placeholder="Daily" />
+                              </Select.Trigger>
+                              <Select.Positioner>
+                                <Select.Content>
+                                  {updateScheduleCollection.items.map((item) => (
+                                    <Select.Item item={item} key={item.value}>
+                                      {item.label}
+                                      <Select.ItemIndicator />
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Positioner>
+                            </Select.Root>
+                          )}
+                        />
+                      </Box>
+
                       <Box fontSize="sm" mt={3}>
                         <Button size="sm" variant="outline" type="button" onClick={handleCheckUpdate} loading={updateChecking}>
                           <HStack><LuZap /><Text>Check for updates</Text></HStack>
@@ -446,13 +485,6 @@ function Settings({ config, saveConfig, onBeforeTabChange, onConfigChange, onDis
         onDiscard={handleDiscardAndContinue}
         onSave={handleSaveAndContinue}
       />
-
-      {updateResult !== null && (
-        <UpdateCheckDialog
-          onClose={() => setUpdateResult(null)}
-          result={updateResult}
-        />
-      )}
 
     </>
   );

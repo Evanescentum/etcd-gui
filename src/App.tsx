@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy } from "react";
+import { useState, useEffect, useRef, lazy, useCallback } from "react";
 import {
   Tabs,
   EmptyState,
@@ -12,11 +12,12 @@ import Profiles from "./components/tabs/Profiles";
 import Settings from "./components/tabs/Settings";
 import Onboarding from "./components/tabs/Onboarding";
 import { LuLayoutDashboard, LuUsers, LuSettings, LuRefreshCw, LuTriangleAlert, LuNetwork, LuFileText } from "react-icons/lu";
-import { initializeEtcdClient, configFileExists, getConfig, updateConfig } from "./api/etcd";
-import type { AppConfig } from "./api/etcd";
+import { initializeEtcdClient, configFileExists, getConfig, listenUpdateCheckEvents, triggerUpdateCheck, updateConfig } from "./api/etcd";
+import type { AppConfig, UpdateCheckResult } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
 import { useTheme } from "next-themes";
 import { Provider } from "./components/ui/provider";
+import UpdateCheckDialog from "./components/dialogs/UpdateCheckDialog";
 
 
 const Dashboard = lazy(() => import("./components/tabs/Dashboard"));
@@ -39,6 +40,8 @@ function App() {
   const [savedConfig, setSavedConfig] = useState<AppConfig | null>(null);
   const [configLoading, setConfigLoading] = useState(true);
   const configError = useRef<string | null>(null);
+  const [updateResult, setUpdateResult] = useState<UpdateCheckResult | null>(null);
+  const [updateChecking, setUpdateChecking] = useState(false);
 
   // Load config function that can be used by components to trigger a refresh
   const loadConfig = async () => {
@@ -128,6 +131,78 @@ function App() {
 
     initialize();
   }, []);
+
+  useEffect(() => {
+    let isDisposed = false;
+    let unlisten: (() => void) | null = null;
+
+    void listenUpdateCheckEvents((payload) => {
+      if (payload.trigger === "manual") {
+        setUpdateChecking(false);
+      }
+
+      if (payload.error) {
+        toaster.create({
+          title: "Failed to check for updates",
+          description: payload.error,
+          type: "error",
+          closable: true,
+        });
+        return;
+      }
+
+      if (!payload.result) {
+        return;
+      }
+
+      if (payload.result.update_available || payload.trigger === "manual") {
+        setUpdateResult(payload.result);
+      }
+    })
+      .then((dispose) => {
+        if (isDisposed) {
+          dispose();
+          return;
+        }
+
+        unlisten = dispose;
+      })
+      .catch((error) => {
+        const msg = error instanceof Error ? error.message : String(error);
+        toaster.create({
+          title: "Update event listener error",
+          description: msg,
+          type: "error",
+          closable: true,
+        });
+      });
+
+    return () => {
+      isDisposed = true;
+      unlisten?.();
+    };
+  }, []);
+
+  const handleManualCheckUpdate = useCallback(async () => {
+    if (updateChecking) {
+      return;
+    }
+
+    setUpdateChecking(true);
+
+    try {
+      await triggerUpdateCheck();
+    } catch (error) {
+      setUpdateChecking(false);
+      const msg = error instanceof Error ? error.message : String(error);
+      toaster.create({
+        title: "Failed to trigger update check",
+        description: msg,
+        type: "error",
+        closable: true,
+      });
+    }
+  }, [updateChecking]);
 
   const handleTabChange = async (e: { value: string }) => {
     const newTab = e.value;
@@ -319,11 +394,20 @@ function App() {
             onBeforeTabChange={checkBeforeTabChangeRef}
             config={savedConfig || appConfig}
             saveConfig={saveConfig}
+            updateChecking={updateChecking}
+            onCheckUpdate={handleManualCheckUpdate}
             onConfigChange={(newConfig: AppConfig) => { setAppConfig(newConfig) }}
             onDiscard={() => { if (savedConfig) setAppConfig(savedConfig) }}
           />
         </Tabs.Content>
       </Tabs.Root>
+
+      {updateResult !== null && (
+        <UpdateCheckDialog
+          onClose={() => setUpdateResult(null)}
+          result={updateResult}
+        />
+      )}
 
       <Toaster />
     </Provider>

@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -12,6 +13,8 @@ pub struct AppConfig {
     pub kv_load_method: KvLoadMethod,
     #[serde(default)]
     pub update_channel: UpdateChannel,
+    #[serde(default)]
+    pub update_check_schedule: UpdateCheckSchedule,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, strum::Display)]
@@ -30,6 +33,26 @@ pub enum KvLoadMethod {
 impl Default for KvLoadMethod {
     fn default() -> Self {
         KvLoadMethod::Lazy
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub enum UpdateCheckSchedule {
+    Never,
+    #[default]
+    Daily,
+    Weekly,
+    Monthly,
+}
+
+impl UpdateCheckSchedule {
+    pub fn interval_duration(&self) -> Option<Duration> {
+        match self {
+            Self::Never => None,
+            Self::Daily => Some(Duration::from_secs(24 * 60 * 60)),
+            Self::Weekly => Some(Duration::from_secs(7 * 24 * 60 * 60)),
+            Self::Monthly => Some(Duration::from_secs(30 * 24 * 60 * 60)),
+        }
     }
 }
 

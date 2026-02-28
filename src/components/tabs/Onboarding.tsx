@@ -18,7 +18,7 @@ import {
 import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { LuPlus, LuTrash2, LuArrowRight, LuChevronLeft, LuChevronsRight, LuRefreshCw, LuCheck, LuCircleAlert } from "react-icons/lu";
-import { updateConfig, testConnection } from "../../api/etcd";
+import { getDefaultConfig, updateConfig, testConnection } from "../../api/etcd";
 import type { AppConfig, Profile } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { Tooltip } from "../../components/ui/tooltip";
@@ -162,14 +162,10 @@ function Onboarding({ onComplete }: OnboardingProps) {
 
   const handleFinish = async () => {
     try {
-      // Create config object
-      const config: AppConfig = {
-        profiles: [profile],
-        current_profile: profile.name,
-        color_theme: 'System',
-        kv_load_method: "Lazy",
-        update_channel: "Stable",
-      };
+      const config: AppConfig = await getDefaultConfig();
+
+      config.profiles = [profile];
+      config.current_profile = profile.name;
 
       // Handle auth
       if (useAuth) {

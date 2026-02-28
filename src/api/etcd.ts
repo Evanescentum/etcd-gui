@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 
 /**
  * Represents a key-value pair from etcd
@@ -23,10 +24,12 @@ export interface AppConfig {
     font_family_mono?: string;
     kv_load_method: "Lazy" | "Full";
     update_channel: UpdateChannel;
+    update_check_schedule: UpdateCheckSchedule;
     log_file_path?: string;
 }
 
 export type UpdateChannel = "Stable" | "Beta";
+export type UpdateCheckSchedule = "Never" | "Daily" | "Weekly" | "Monthly";
 
 export interface ReleaseInfo {
     tag_name: string;
@@ -45,6 +48,14 @@ export interface UpdateCheckResult {
     release: ReleaseInfo;
 }
 
+export type UpdateCheckTrigger = "automatic" | "manual";
+
+export interface UpdateCheckEvent {
+    trigger: UpdateCheckTrigger;
+    result?: UpdateCheckResult;
+    error?: string;
+}
+
 export async function checkUpdate(channel: UpdateChannel): Promise<UpdateCheckResult> {
     try {
         return await invoke<UpdateCheckResult>('check_update', { channel });
@@ -52,6 +63,23 @@ export async function checkUpdate(channel: UpdateChannel): Promise<UpdateCheckRe
         console.error('Error checking update:', error);
         throw error;
     }
+}
+
+export async function triggerUpdateCheck(): Promise<void> {
+    try {
+        await invoke<void>('trigger_update_check');
+    } catch (error) {
+        console.error('Error triggering update check:', error);
+        throw error;
+    }
+}
+
+export async function listenUpdateCheckEvents(
+    handler: (payload: UpdateCheckEvent) => void,
+): Promise<() => void> {
+    return listen<UpdateCheckEvent>('update-check', (event) => {
+        handler(event.payload);
+    });
 }
 
 export interface Profile {
@@ -152,6 +180,15 @@ export async function getConfig(): Promise<AppConfig> {
         return await invoke<AppConfig>('get_config');
     } catch (error) {
         console.error('Error getting config:', error);
+        throw error;
+    }
+}
+
+export async function getDefaultConfig(): Promise<AppConfig> {
+    try {
+        return await invoke<AppConfig>('get_default_config');
+    } catch (error) {
+        console.error('Error getting default config:', error);
         throw error;
     }
 }

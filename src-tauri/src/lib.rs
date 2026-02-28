@@ -11,10 +11,127 @@ use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
+use std::sync::Arc;
 use tauri::webview::cookie::time::format_description::well_known::Rfc3339;
-use tauri::{Manager, State};
+use tauri::{Emitter, Manager, State};
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, Notify};
+
+const UPDATE_CHECK_EVENT: &str = "update-check";
+
+#[derive(Clone, Default)]
+struct UpdateCheckWorkerControl {
+    wake_signal: Arc<Notify>,
+}
+
+#[derive(Serialize, Clone, Debug)]
+#[serde(rename_all = "snake_case")]
+enum UpdateCheckTrigger {
+    Automatic,
+    Manual,
+}
+
+#[derive(Serialize, Clone)]
+struct UpdateCheckEvent {
+    trigger: UpdateCheckTrigger,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    result: Option<update::UpdateCheckResult>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn emit_update_check_event(app_handle: &tauri::AppHandle, payload: UpdateCheckEvent) {
+    if let Err(err) = app_handle.emit(UPDATE_CHECK_EVENT, payload) {
+        log::error!("Failed to emit update-check event: {err}");
+    }
+}
+
+async fn run_update_check_and_emit(
+    app_handle: &tauri::AppHandle,
+    channel: config::UpdateChannel,
+    trigger: UpdateCheckTrigger,
+) {
+    let current_version = app_handle.package_info().version.clone();
+    let channel_for_log = channel.clone();
+
+    log::info!(
+        "Checking update on GitHub (trigger={:?}, channel={channel_for_log}, current={current_version})",
+        trigger
+    );
+
+    match update::check_update(channel, current_version).await {
+        Ok(result) => {
+            emit_update_check_event(
+                app_handle,
+                UpdateCheckEvent {
+                    trigger,
+                    result: Some(result),
+                    error: None,
+                },
+            );
+        }
+        Err(err) => {
+            log::error!("Update check failed: {err}");
+            emit_update_check_event(
+                app_handle,
+                UpdateCheckEvent {
+                    trigger,
+                    result: None,
+                    error: Some(err),
+                },
+            );
+        }
+    }
+}
+
+async fn update_check_worker(
+    app_handle: tauri::AppHandle,
+    worker_control: UpdateCheckWorkerControl,
+) {
+    let startup_delay = std::time::Duration::from_secs(30);
+    let mut first_check_pending = true;
+
+    loop {
+        let (channel, schedule) = {
+            let state = app_handle.state::<Mutex<AppState>>();
+            let app_state = state.lock().await;
+            (
+                app_state.app_config.update_channel.clone(),
+                app_state.app_config.update_check_schedule.clone(),
+            )
+        };
+
+        if first_check_pending {
+            tokio::select! {
+                _ = tokio::time::sleep(startup_delay) => {
+                    if !matches!(schedule, config::UpdateCheckSchedule::Never) {
+                        run_update_check_and_emit(&app_handle, channel, UpdateCheckTrigger::Automatic).await;
+                    }
+                    first_check_pending = false;
+                }
+                _ = worker_control.wake_signal.notified() => {
+                    first_check_pending = false;
+                }
+            }
+
+            continue;
+        }
+
+        match schedule.interval_duration() {
+            None => {
+                worker_control.wake_signal.notified().await;
+            }
+            Some(interval) => {
+                tokio::select! {
+                    _ = tokio::time::sleep(interval) => {
+                        run_update_check_and_emit(&app_handle, channel, UpdateCheckTrigger::Automatic).await;
+                    }
+                    _ = worker_control.wake_signal.notified() => {}
+                }
+            }
+        }
+    }
+}
 
 #[tauri::command]
 async fn check_update(
@@ -29,6 +146,20 @@ async fn check_update(
     update::check_update(channel, current_version)
         .await
         .inspect_err(|e| log::error!("Update check failed: {e}"))
+}
+
+#[tauri::command]
+async fn trigger_update_check(
+    app_handle: tauri::AppHandle,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    let channel = {
+        let app_state = state.lock().await;
+        app_state.app_config.update_channel.clone()
+    };
+
+    run_update_check_and_emit(&app_handle, channel, UpdateCheckTrigger::Manual).await;
+    Ok(())
 }
 
 #[derive(Serialize)]
@@ -203,9 +334,15 @@ async fn get_config(state: State<'_, Mutex<AppState>>) -> Result<config::AppConf
 }
 
 #[tauri::command]
+async fn get_default_config() -> Result<config::AppConfig, String> {
+    Ok(config::AppConfig::default())
+}
+
+#[tauri::command]
 async fn update_config(
     config: config::AppConfig,
     state: State<'_, Mutex<AppState>>,
+    update_worker_control: State<'_, UpdateCheckWorkerControl>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut app_state = state.lock().await;
@@ -252,6 +389,7 @@ async fn update_config(
     }
 
     log::info!("Configuration updated successfully");
+    update_worker_control.wake_signal.notify_waiters();
     Ok(())
 }
 
@@ -535,6 +673,8 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
+            check_update,
+            trigger_update_check,
             initialize_etcd_client,
             list_items,
             list_keys_only,
@@ -543,6 +683,7 @@ pub fn run() {
             delete_key,
             get_cluster_info,
             get_config,
+            get_default_config,
             update_config,
             test_connection,
             config_file_exists,
@@ -556,11 +697,21 @@ pub fn run() {
             delete_path_history,
             get_system_fonts,
             get_key_at_revision,
-            format_timestamp,
-            check_update
+            format_timestamp
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));
+
+            let update_worker_control = UpdateCheckWorkerControl::default();
+            let worker_control = update_worker_control.clone();
+            let app_handle = app.handle().clone();
+
+            app.manage(update_worker_control);
+
+            tauri::async_runtime::spawn(async move {
+                update_check_worker(app_handle, worker_control).await;
+            });
+
             Ok(())
         })
         .run(tauri::generate_context!())
