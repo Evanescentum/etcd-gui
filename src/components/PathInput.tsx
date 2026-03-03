@@ -133,12 +133,12 @@ function PathInput({
                 <Portal>
                     <Combobox.Positioner>
                         <Combobox.Content boxShadow="2xl">
-                            <ScrollArea.Root maxH="15rem">
+                            <ScrollArea.Root maxH="16rem">
                                 <ScrollArea.Viewport>
-                                    <ScrollArea.Content>
+                                    <ScrollArea.Content padding={2}>
                                         <Combobox.Empty>No history</Combobox.Empty>
                                         {pathHistoryCollection.items.map((item) => (
-                                            <Combobox.Item key={item.value} item={item}>
+                                            <Combobox.Item key={item.value} item={item} padding={0}>
                                                 <Combobox.ItemText fontFamily="mono" fontSize="sm" flex="1">
                                                     {item.label}
                                                 </Combobox.ItemText>
