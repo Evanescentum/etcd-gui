@@ -44,6 +44,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
     endpoints: [{ host: "http://localhost", port: 2379 }],
     timeout_ms: 5000,
     connect_timeout_ms: 3000,
+    metrics_path: "/metrics",
   });
   const [useAuth, setUseAuth] = useState(false);
   const [validationErrors, setValidationErrors] = useState({
@@ -388,6 +389,25 @@ function Onboarding({ onComplete }: OnboardingProps) {
                   {validationErrors.connectTimeout && (
                     <Field.ErrorText>{validationErrors.connectTimeout}</Field.ErrorText>
                   )}
+                </Field.Root>
+
+                <Field.Root>
+                  <Field.Label>Metrics Path</Field.Label>
+                  <Input
+                    {...codeInputProps}
+                    value={profile.metrics_path === undefined ? '' : profile.metrics_path}
+                    onChange={(e) => {
+                      let val = e.target.value;
+                      if (val !== "" && !val.startsWith('/')) {
+                        val = '/' + val;
+                      }
+                      setProfile({ ...profile, metrics_path: val });
+                    }}
+                    placeholder="/metrics"
+                  />
+                  <Field.HelperText>
+                    Path to fetch Prometheus format metrics from (default: /metrics)
+                  </Field.HelperText>
                 </Field.Root>
               </VStack>
             </Steps.Content>

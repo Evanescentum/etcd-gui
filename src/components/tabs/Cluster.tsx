@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import {
     Box,
     Button,
@@ -30,16 +29,16 @@ import {
     LuShield,
     LuGlobe,
 } from "react-icons/lu";
-import type { AppConfig } from "../../api/etcd";
 import { useClusterInfoQuery } from "../../hooks/useEtcdQuery";
+import { formatBytes } from "@/utils/format";
+import { useActiveProfile } from "@/contexts/active-profile";
 
 interface ClusterProps {
     configLoading: boolean;
-    appConfig: AppConfig;
 }
 
-function Cluster({ configLoading, appConfig }: ClusterProps) {
-    const currentProfileName = useMemo(() => appConfig.current_profile ?? "default", [appConfig]);
+function Cluster({ configLoading }: ClusterProps) {
+    const { activeProfile } = useActiveProfile();
 
     const {
         data: clusterInfo,
@@ -47,30 +46,21 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
         error,
         refetch,
         isFetching,
-    } = useClusterInfoQuery({ currentProfileName, configLoading });
+    } = useClusterInfoQuery({ currentProfileName: activeProfile.name, configLoading });
 
     const handleCopyClusterId = async (clusterId: number | string) => {
         try {
             await navigator.clipboard.writeText(String(clusterId));
             toaster.success({
-                title: "复制成功",
-                description: "Cluster ID 已复制到剪贴板",
+                title: "Copied",
+                description: "Cluster ID copied to clipboard",
             });
         } catch (err) {
             toaster.error({
-                title: "复制失败",
-                description: "无法复制到剪贴板",
+                title: "Copy failed",
+                description: "Unable to copy to clipboard",
             });
         }
-    };
-
-    const formatBytes = (bytes: number) => {
-        if (bytes === 0) return { value: "0", unit: "Bytes" };
-        const k = 1024;
-        const sizes = ["Bytes", "KB", "MB", "GB"];
-        const i = Math.floor(Math.log(bytes) / Math.log(k));
-        const value = (Math.round((bytes / Math.pow(k, i)) * 100) / 100).toString();
-        return { value, unit: sizes[i] };
     };
 
     const dbSize = formatBytes(clusterInfo?.db_size || 0);
@@ -199,7 +189,7 @@ function Cluster({ configLoading, appConfig }: ClusterProps) {
                                                 content={
                                                     <Box>
                                                         <Text fontFamily="mono" fontSize="sm">{clusterInfo.cluster_id}</Text>
-                                                        <Text fontSize="xs" color="fg.muted" mt={1}>点击可复制</Text>
+                                                        <Text fontSize="xs" color="fg.muted" mt={1}>Click to copy</Text>
                                                     </Box>
                                                 }
                                             >

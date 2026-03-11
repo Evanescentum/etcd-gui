@@ -60,6 +60,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
       queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
       queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
+      queryClient.invalidateQueries({ queryKey: ["metrics"] });
 
       toaster.create({
         title: "Profile Activated",
@@ -91,7 +92,8 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       name: `${prefix} ${postfix}`,
       endpoints: [{ host: "http://localhost", port: 2379 }],
       timeout_ms: 5000,
-      connect_timeout_ms: 3000
+      connect_timeout_ms: 3000,
+      metrics_path: "/metrics"
     };
 
     setSelectedProfile({
@@ -180,6 +182,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
         queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
         queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
         queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
+        queryClient.invalidateQueries({ queryKey: ["metrics"] });
       }
 
       toaster.create({

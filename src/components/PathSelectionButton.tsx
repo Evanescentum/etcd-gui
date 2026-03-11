@@ -56,7 +56,7 @@ function PathSelectionButton({ selectedText, position, onNavigate }: PathSelecti
                 <Tooltip
                     content={
                         <Text maxWidth="300px" wordBreak="break-all">
-                            导航到路径: {selectedText}
+                            Navigate to path: {selectedText}
                         </Text>
                     }
                     openDelay={100}

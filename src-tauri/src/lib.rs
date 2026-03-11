@@ -1,6 +1,7 @@
 mod client;
 mod config;
 mod core;
+mod metrics;
 mod state;
 mod update;
 
@@ -16,6 +17,8 @@ use tauri::webview::cookie::time::format_description::well_known::Rfc3339;
 use tauri::{Emitter, Manager, State};
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
 use tokio::sync::{Mutex, Notify};
+
+use crate::metrics::{fetch_metrics_text, parse_metrics_text};
 
 const UPDATE_CHECK_EVENT: &str = "update-check";
 
@@ -139,7 +142,6 @@ async fn check_update(
     channel: config::UpdateChannel,
 ) -> Result<update::UpdateCheckResult, String> {
     let current_version = app_handle.package_info().version.clone();
-    // let current_version = semver::Version::new(0, 8, 0); // TODO: debug
 
     log::info!("Checking update on GitHub (channel={channel}, current={current_version})");
 
@@ -639,6 +641,23 @@ async fn get_key_at_revision(
         .inspect_err(|e| log::error!("Failed to get key at revision: {}", e))
 }
 
+#[tauri::command]
+async fn fetch_metrics(
+    endpoint: config::Endpoint,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<Vec<metrics::ParsedMetricFamily>, String> {
+    let profile = {
+        let state = state.lock().await;
+        state
+            .app_config
+            .get_current_profile()
+            .cloned()
+            .ok_or_else(|| "No current profile set".to_string())?
+    };
+
+    parse_metrics_text(fetch_metrics_text(&profile, &endpoint).await?)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -697,7 +716,8 @@ pub fn run() {
             delete_path_history,
             get_system_fonts,
             get_key_at_revision,
-            format_timestamp
+            format_timestamp,
+            fetch_metrics,
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));

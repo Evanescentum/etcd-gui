@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { useLazyValueEtcdItemsQuery, useEtcdItemsQuery } from "../../hooks/useEtcdQuery";
 import {
   Box,
@@ -27,7 +27,7 @@ import { codeInputProps } from "@/utils/inputProps";
 import { LuPlus, LuTrash2, LuSearch, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { TbEdit, TbEye } from "react-icons/tb";
 import { Tooltip } from "../../components/ui/tooltip";
-import { AppConfig, EtcdItem } from "../../api/etcd";
+import { type EtcdItem } from "../../api/etcd";
 import AddKeyDialog from "../dialogs/AddKeyDialog";
 import DeleteKeyDialog from "../dialogs/DeleteKeyDialog";
 import EditKeyDialog from "../dialogs/EditKeyDialog";
@@ -35,6 +35,7 @@ import ViewValueDialog from "../dialogs/ViewValueDialog";
 import PathInput from "../PathInput";
 import { useDebounce } from "use-debounce";
 import { useIsFetching } from "@tanstack/react-query";
+import { useActiveProfile } from "@/contexts/active-profile";
 
 // Tooltip component for table cells
 const TableRowTooltip = (props: { content: string, maxWidth: string, children: React.ReactNode }) => {
@@ -62,14 +63,13 @@ const pageSizeCollection = createListCollection({
 
 interface DashboardProps {
   configLoading: boolean;
-  appConfig: AppConfig;
 }
 
-function Dashboard({ configLoading, appConfig }: DashboardProps) {
+function Dashboard({ configLoading }: DashboardProps) {
+  const { activeProfile, appConfig } = useActiveProfile();
   const [keyPrefix, setKeyPrefix] = useState("/");
   const [debouncedKeyPrefix] = useDebounce(keyPrefix, 500); // Debounce keyPrefix to avoid too many queries
   const [searchQuery, setSearchQuery] = useState("");
-  const currentProfileName = useMemo(() => appConfig.current_profile ?? "default", [appConfig]);
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -80,7 +80,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   const lazyQueryResult = useLazyValueEtcdItemsQuery({
     enabled: !configLoading && kvLoadMethod === "Lazy",
     keyPrefix: debouncedKeyPrefix,
-    currentProfileName,
+    currentProfileName: activeProfile.name,
     searchQuery,
     currentPage,
     pageSize
@@ -89,7 +89,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
   const fullQueryResult = useEtcdItemsQuery({
     enabled: !configLoading && kvLoadMethod === "Full",
     keyPrefix: debouncedKeyPrefix,
-    currentProfileName,
+    currentProfileName: activeProfile.name,
     searchQuery,
     currentPage,
     pageSize
@@ -152,7 +152,7 @@ function Dashboard({ configLoading, appConfig }: DashboardProps) {
                 setKeyPrefix(value);
                 setCurrentPage(1);
               }}
-              profileName={currentProfileName}
+              profileName={activeProfile.name}
               onRefresh={refetch}
               loading={isFetching}
             />

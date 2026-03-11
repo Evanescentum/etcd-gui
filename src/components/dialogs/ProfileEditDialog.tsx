@@ -319,6 +319,24 @@ function ProfileEditDialog({ profile, onSave, onCancel, loading, isNew }: Profil
 
                             <Box borderTopWidth="1px" borderColor={borderColor} pt={4} mt={2} />
 
+                            <Field.Root>
+                                <Field.Label>Metrics Path</Field.Label>
+                                <Input
+                                    {...codeInputProps}
+                                    value={editedProfile.metrics_path === undefined ? '' : editedProfile.metrics_path}
+                                    onChange={(e) => {
+                                        let val = e.target.value;
+                                        if (val !== "" && !val.startsWith('/')) {
+                                            val = '/' + val;
+                                        }
+                                        setEditedProfile({ ...editedProfile, metrics_path: val });
+                                    }}
+                                    placeholder="/metrics"
+                                />
+                            </Field.Root>
+
+                            <Box borderTopWidth="1px" borderColor={borderColor} pt={4} mt={2} />
+
                             <Flex align="center" justify="space-between">
                                 <Box>
                                     <Text fontWeight="medium">Read-only Mode</Text>

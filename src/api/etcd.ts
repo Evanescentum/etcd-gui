@@ -56,6 +56,11 @@ export interface UpdateCheckEvent {
     error?: string;
 }
 
+export interface Endpoint {
+    host: string;
+    port: number;
+}
+
 export async function checkUpdate(channel: UpdateChannel): Promise<UpdateCheckResult> {
     try {
         return await invoke<UpdateCheckResult>('check_update', { channel });
@@ -84,14 +89,24 @@ export async function listenUpdateCheckEvents(
 
 export interface Profile {
     name: string;
-    endpoints: Array<{
-        host: string;
-        port: number;
-    }>;
+    endpoints: Endpoint[];
     user?: [string, string]; // [username, password] tuple
     timeout_ms?: number;
     connect_timeout_ms?: number;
     locked?: boolean;
+    metrics_path?: string;
+}
+
+export interface ParsedMetricSample {
+    value: string;
+    labels?: Record<string, string>;
+}
+
+export interface ParsedMetricFamily {
+    name: string;
+    help: string;
+    type: "COUNTER" | "GAUGE" | "HISTOGRAM" | "SUMMARY" | "UNTYPED";
+    metrics: ParsedMetricSample[];
 }
 
 /**
@@ -168,6 +183,18 @@ export async function deleteEtcdItem(key: string): Promise<void> {
         await invoke<void>('delete_key', { key });
     } catch (error) {
         console.error('Error deleting etcd item:', error);
+        throw error;
+    }
+}
+
+/**
+ * Fetch Prometheus format metrics from etcd
+ */
+export async function fetchMetrics(endpoint: Endpoint): Promise<ParsedMetricFamily[]> {
+    try {
+        return await invoke<ParsedMetricFamily[]>('fetch_metrics', { endpoint });
+    } catch (error) {
+        console.error('Error fetching metrics:', error);
         throw error;
     }
 }

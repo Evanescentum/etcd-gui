@@ -83,15 +83,15 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
         try {
             await writeText(text);
             toaster.create({
-                title: "复制成功",
-                description: "值已复制到剪贴板",
+                title: "Copied",
+                description: "Value copied to clipboard",
                 type: "success",
                 closable: true,
             });
         } catch (error) {
             toaster.create({
-                title: "复制失败",
-                description: "无法复制到剪贴板",
+                title: "Copy failed",
+                description: "Unable to copy to clipboard",
                 type: "error",
                 closable: true,
             });

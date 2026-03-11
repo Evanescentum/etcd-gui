@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::time::Duration;
+use std::{fmt::Display, time::Duration};
 use tauri::Manager;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -65,12 +65,25 @@ pub struct Profile {
     pub timeout_ms: Option<u64>,
     pub connect_timeout_ms: Option<u64>,
     pub locked: Option<bool>,
+    // The metric path for the cluster endpoints. By default usually `/metrics`
+    #[serde(default = "default_metrics_path")]
+    pub metrics_path: Option<String>,
+}
+
+fn default_metrics_path() -> Option<String> {
+    Some("/metrics".to_string())
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Endpoint {
     pub host: String,
     pub port: u16,
+}
+
+impl Display for Endpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}:{}", self.host, self.port)
+    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]

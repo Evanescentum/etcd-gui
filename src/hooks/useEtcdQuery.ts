@@ -1,5 +1,5 @@
 import { useQuery, UseQueryResult } from "@tanstack/react-query";
-import { EtcdItem, fetchEtcdItems, fetchEtcdKeysOnly, fetchValuesInRange, getClusterInfo, type ClusterInfo } from "../api/etcd";
+import { EtcdItem, fetchEtcdItems, fetchEtcdKeysOnly, fetchValuesInRange, getClusterInfo, type ClusterInfo, fetchMetrics, type Endpoint, type ParsedMetricFamily } from "../api/etcd";
 import { useMemo } from "react";
 
 export interface UseEtcdItemsQueryResult {
@@ -94,5 +94,27 @@ export function useClusterInfoQuery({ currentProfileName, configLoading }: {
         queryFn: async () => await getClusterInfo(),
         staleTime: 1000 * 60,
         enabled: !configLoading && !!currentProfileName,
+    });
+}
+
+export function useMetricsQuery({ currentProfileName, configLoading, endpoint, isActive, autoRefresh, intervalMs = 10000 }: {
+    currentProfileName: string;
+    configLoading: boolean;
+    endpoint: Endpoint | null;
+    isActive: boolean;
+    autoRefresh: boolean;
+    intervalMs?: number;
+}): UseQueryResult<ParsedMetricFamily[], Error> {
+    return useQuery({
+        queryKey: ["metrics", currentProfileName, endpoint?.host ?? null, endpoint?.port ?? null],
+        queryFn: async () => {
+            if (!endpoint) {
+                throw new Error("Metrics endpoint is required");
+            }
+
+            return await fetchMetrics(endpoint);
+        },
+        refetchInterval: isActive && autoRefresh ? intervalMs : false,
+        enabled: isActive && !configLoading && !!currentProfileName && !!endpoint,
     });
 }
