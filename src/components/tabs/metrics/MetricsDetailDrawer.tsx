@@ -1,3 +1,4 @@
+import { useMemo, useState } from "react";
 import {
     Badge,
     CloseButton,
@@ -10,39 +11,97 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react";
-import { flexRender, type Table as ReactTable } from "@tanstack/react-table";
+import {
+    type SortingState,
+    type ColumnDef,
+    getCoreRowModel,
+    getSortedRowModel,
+    useReactTable,
+    flexRender,
+} from "@tanstack/react-table";
 import type { ParsedMetricSample } from "../../../api/etcd";
 import { codeInputProps } from "@/utils/inputProps";
 import { LuArrowDown, LuArrowUp, LuArrowUpDown, LuSearch } from "react-icons/lu";
-import type { MetricFamilyView } from "./types";
+import { type MetricFamilyView, sampleMatchesLabelFilters, compareMetricCellValues } from "./types";
 
 interface MetricsDetailDrawerProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     activeFamily: MetricFamilyView | null;
-    detailLabelColumns: string[];
-    detailSearchQuery: string;
-    onDetailSearchQueryChange: (value: string) => void;
-    detailRows: ParsedMetricSample[];
-    detailTable: ReactTable<ParsedMetricSample>;
+    selectedLabelFilters: string[];
 }
 
 const MetricsDetailDrawer = ({
     open,
     onOpenChange,
     activeFamily,
-    detailLabelColumns,
-    detailSearchQuery,
-    onDetailSearchQueryChange,
-    detailRows,
-    detailTable,
+    selectedLabelFilters,
 }: MetricsDetailDrawerProps) => {
+    const [detailSearchQuery, setDetailSearchQuery] = useState("");
+    const [detailSorting, setDetailSorting] = useState<SortingState>([]);
+
+    const detailLabelColumns = activeFamily?.labelKeys ?? [];
+
+    const detailRows = useMemo(() => {
+        if (!activeFamily) return [];
+
+        const lowerDetailSearch = detailSearchQuery.trim().toLowerCase();
+
+        return activeFamily.family.metrics.filter((sample) => {
+            if (!sampleMatchesLabelFilters(sample, selectedLabelFilters)) return false;
+            if (!lowerDetailSearch) return true;
+
+            const labelsText = sample.labels
+                ? Object.entries(sample.labels)
+                    .map(([key, value]) => `${key}=${value}`)
+                    .join(" ")
+                    .toLowerCase()
+                : "";
+
+            return sample.value.toLowerCase().includes(lowerDetailSearch) || labelsText.includes(lowerDetailSearch);
+        });
+    }, [activeFamily, detailSearchQuery, selectedLabelFilters]);
+
+    const detailColumns = useMemo((): ColumnDef<ParsedMetricSample, string>[] => [
+        ...detailLabelColumns.map((key): ColumnDef<ParsedMetricSample, string> => ({
+            id: key,
+            accessorFn: (row) => row.labels?.[key] ?? "-",
+            header: key,
+            sortingFn: (rowA, rowB, columnId) =>
+                compareMetricCellValues(rowA.getValue(columnId), rowB.getValue(columnId)),
+        })),
+        {
+            id: "value",
+            accessorFn: (row) => row.value,
+            header: "Value",
+            sortingFn: (rowA, rowB, columnId) =>
+                compareMetricCellValues(rowA.getValue(columnId), rowB.getValue(columnId)),
+        },
+    ], [detailLabelColumns]);
+
+    const detailTable = useReactTable({
+        data: detailRows,
+        columns: detailColumns,
+        state: { sorting: detailSorting },
+        onSortingChange: setDetailSorting,
+        getCoreRowModel: getCoreRowModel(),
+        getSortedRowModel: getSortedRowModel(),
+    });
+
+    const handleOpenChange = (nextOpen: boolean) => {
+        onOpenChange(nextOpen);
+        if (!nextOpen) {
+            setDetailSearchQuery("");
+            setDetailSorting([]);
+        }
+    };
+
     return (
         <Drawer.Root
             open={open}
             placement="end"
             size="xl"
-            onOpenChange={(e) => onOpenChange(e.open)}
+            onOpenChange={(e) => handleOpenChange(e.open)}
         >
             <Drawer.Backdrop />
             <Drawer.Positioner>
@@ -83,46 +142,46 @@ const MetricsDetailDrawer = ({
                                     {...codeInputProps}
                                     placeholder="Search label values or metric values..."
                                     value={detailSearchQuery}
-                                    onChange={(e) => onDetailSearchQueryChange(e.target.value)}
+                                    onChange={(e) => setDetailSearchQuery(e.target.value)}
                                 />
                                 <Table.ScrollArea height="70vh" borderWidth="1px" borderRadius="md">
-                                    <Table.Root variant="line" stickyHeader native>
-                                        <thead>
+                                    <Table.Root variant="line" stickyHeader>
+                                        <Table.Header>
                                             {detailTable.getHeaderGroups().map((headerGroup) => (
-                                                <tr key={headerGroup.id}>
+                                                <Table.Row key={headerGroup.id}>
                                                     {headerGroup.headers.map((header) => {
-                                                        const canSort = header.column.getCanSort();
                                                         const sorted = header.column.getIsSorted();
                                                         return (
-                                                            <th
+                                                            <Table.ColumnHeader
                                                                 key={header.id}
-                                                                onClick={canSort ? header.column.getToggleSortingHandler() : undefined}
+                                                                onClick={header.column.getToggleSortingHandler()}
+                                                                cursor="pointer"
+                                                                userSelect="none"
+                                                                _hover={{ bg: "bg.subtle" }}
                                                             >
                                                                 <HStack gap={1} minW={0} justifyContent="flex-start">
                                                                     {flexRender(header.column.columnDef.header, header.getContext())}
-                                                                    {canSort && (
-                                                                        <Icon fontSize="xs" color={sorted ? "fg" : "fg.muted"}>
-                                                                            {sorted === "asc" ? <LuArrowUp /> : sorted === "desc" ? <LuArrowDown /> : <LuArrowUpDown />}
-                                                                        </Icon>
-                                                                    )}
+                                                                    <Icon fontSize="xs" color={sorted ? "fg" : "fg.muted"}>
+                                                                        {sorted === "asc" ? <LuArrowUp /> : sorted === "desc" ? <LuArrowDown /> : <LuArrowUpDown />}
+                                                                    </Icon>
                                                                 </HStack>
-                                                            </th>
+                                                            </Table.ColumnHeader>
                                                         );
                                                     })}
-                                                </tr>
+                                                </Table.Row>
                                             ))}
-                                        </thead>
-                                        <tbody>
+                                        </Table.Header>
+                                        <Table.Body>
                                             {detailTable.getRowModel().rows.map((row) => (
-                                                <tr key={row.id}>
+                                                <Table.Row key={row.id}>
                                                     {row.getVisibleCells().map((cell) => (
-                                                        <td key={cell.id}>
+                                                        <Table.Cell key={cell.id}>
                                                             {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                                        </td>
+                                                        </Table.Cell>
                                                     ))}
-                                                </tr>
+                                                </Table.Row>
                                             ))}
-                                        </tbody>
+                                        </Table.Body>
                                     </Table.Root>
                                 </Table.ScrollArea>
 

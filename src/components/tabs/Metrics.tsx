@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
     Box,
     Button,
@@ -31,21 +31,14 @@ import {
     LuSearch,
     LuServerCog,
 } from "react-icons/lu";
-import {
-    type SortingState,
-    type ColumnDef,
-    getCoreRowModel,
-    getSortedRowModel,
-    useReactTable,
-} from "@tanstack/react-table";
-import type { Endpoint, ParsedMetricFamily, ParsedMetricSample } from "../../api/etcd";
+import type { Endpoint, ParsedMetricFamily } from "../../api/etcd";
 import { useMetricsQuery } from "../../hooks/useEtcdQuery";
+import { useMetricsSearch, metricGroupOrder } from "../../hooks/useMetricsSearch";
 import { useDebounce } from "use-debounce";
 import { formatBytes } from "@/utils/format";
 import { useActiveProfile } from "@/contexts/active-profile";
 import MetricsDetailDrawer from "./metrics/MetricsDetailDrawer";
 import MetricsFilters from "./metrics/MetricsFilters";
-import type { LabelFacet, MetricFamilyView } from "./metrics/types";
 
 
 interface MetricsProps {
@@ -53,107 +46,10 @@ interface MetricsProps {
     isActive: boolean;
 }
 
-const metricGroupOrder = [
-    "Server",
-    "Disk & Storage",
-    "Network & gRPC",
-    "Process",
-    "Go Runtime",
-    "Prometheus Integration",
-    "Other",
-];
-
 const metricTypeOptions: ParsedMetricFamily["type"][] = ["COUNTER", "GAUGE", "HISTOGRAM", "SUMMARY", "UNTYPED"];
-
-function parseLabelToken(token: string): { key: string; value: string } {
-    const separatorIndex = token.indexOf("=");
-    if (separatorIndex === -1) {
-        return { key: token, value: "" };
-    }
-
-    return {
-        key: token.slice(0, separatorIndex),
-        value: token.slice(separatorIndex + 1),
-    };
-}
-
-function sampleMatchesLabelFilters(sample: { labels?: Record<string, string> }, labelTokens: string[]): boolean {
-    if (labelTokens.length === 0) {
-        return true;
-    }
-
-    if (!sample.labels) {
-        return false;
-    }
-
-    return labelTokens.every((token) => {
-        const { key, value } = parseLabelToken(token);
-        return sample.labels?.[key] === value;
-    });
-}
-
-function familyMatchesLabelFilters(family: ParsedMetricFamily, labelTokens: string[]): boolean {
-    if (labelTokens.length === 0) {
-        return true;
-    }
-
-    return family.metrics.some((sample) => sampleMatchesLabelFilters(sample, labelTokens));
-}
-
-function extractLabelKeys(samples: ParsedMetricSample[]): string[] {
-    const labelKeySet = new Set<string>();
-
-    for (const sample of samples) {
-        if (!sample.labels) {
-            continue;
-        }
-
-        for (const key of Object.keys(sample.labels)) {
-            labelKeySet.add(key);
-        }
-    }
-
-    return Array.from(labelKeySet).sort((a, b) => a.localeCompare(b));
-}
-
-function classifyMetricGroup(name: string): string {
-    if (name.startsWith("etcd_server")) return "Server";
-    if (name.startsWith("etcd_disk") || name.startsWith("etcd_wal") || name.startsWith("etcd_snap")) return "Disk & Storage";
-    if (name.startsWith("etcd_network") || name.startsWith("etcd_grpc") || name.startsWith("grpc")) return "Network & gRPC";
-    if (name.startsWith("process_")) return "Process";
-    if (name.startsWith("go_")) return "Go Runtime";
-    if (name.startsWith("promhttp_")) return "Prometheus Integration";
-    return "Other";
-}
 
 function endpointKey(endpoint: Endpoint): string {
     return `${endpoint.host}:${endpoint.port}`;
-}
-
-function compareMetricCellValues(left: string | undefined, right: string | undefined): number {
-    const leftValue = left ?? "";
-    const rightValue = right ?? "";
-
-    if (leftValue === rightValue) {
-        return 0;
-    }
-
-    const leftNumber = Number(leftValue);
-    const rightNumber = Number(rightValue);
-    const canCompareNumerically =
-        leftValue.trim() !== "" &&
-        rightValue.trim() !== "" &&
-        Number.isFinite(leftNumber) &&
-        Number.isFinite(rightNumber);
-
-    if (canCompareNumerically && leftNumber !== rightNumber) {
-        return leftNumber - rightNumber;
-    }
-
-    return leftValue.localeCompare(rightValue, undefined, {
-        numeric: true,
-        sensitivity: "base",
-    });
 }
 
 const refreshIntervalCollection = createListCollection({
@@ -180,8 +76,6 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
     const [selectedLabelFilters, setSelectedLabelFilters] = useState<string[]>([]);
     const [activeMetricName, setActiveMetricName] = useState<string | null>(null);
     const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
-    const [detailSearchQuery, setDetailSearchQuery] = useState("");
-    const [detailSorting, setDetailSorting] = useState<SortingState>([]);
 
     const nodeCollection = useMemo(() => createListCollection({
         items: activeProfile.endpoints,
@@ -207,192 +101,46 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
 
     const errorMessage = error ? error.message : "Unknown error";
 
-    // Extract key overview stats
-    const overviewStats = useMemo(() => {
+    const metricValue = (name: string): number | null => {
+        const family = metricsData?.find(m => m.name === name);
+        if (!family?.metrics.length) return null;
+        return Number(family.metrics[0].value);
+    };
+
+    const overviewCards = useMemo((): { color: string; icon: ReactNode; label: string; value: string; unit?: string; help: string }[] | null => {
         if (!metricsData) return null;
 
-        const findMetricValue = (name: string, metricsExtractor?: (samples: ParsedMetricSample[]) => string | null): number | null => {
-            const family = metricsData.find(m => m.name === name);
-            if (!family || !family.metrics.length) return null;
+        const hasLeader = metricValue('etcd_server_has_leader') === 1;
+        const leaderChanges = metricValue('etcd_server_leader_changes_seen_total') ?? 0;
+        const dbSize = metricValue('etcd_mvcc_db_total_size_in_bytes') ?? 0;
+        const dbSizeUse = metricValue('etcd_mvcc_db_total_size_in_use_in_bytes') ?? 0;
+        const grpcFamily = metricsData.find(m => m.name === 'grpc_server_handled_total');
+        const clientConns = grpcFamily
+            ? grpcFamily.metrics.filter(s => s.labels?.["grpc_type"] === "unary").reduce((sum, s) => sum + Number(s.value), 0)
+            : 0;
+        const threads = metricValue('go_goroutines') ?? 0;
+        const processMem = metricValue('process_resident_memory_bytes') ?? 0;
 
-            if (metricsExtractor) {
-                const extractedValue = metricsExtractor(family.metrics);
-                return extractedValue ? Number(extractedValue) : null;
-            }
-            return Number(family.metrics[0].value);
-        };
-
-        return {
-            hasLeader: findMetricValue('etcd_server_has_leader') === 1,
-            leaderChanges: findMetricValue('etcd_server_leader_changes_seen_total') ?? 0,
-            commitIndex: findMetricValue('etcd_debugging_store_expires_total') ?? 0, // Fallback/Proxy stat
-            dbSize: findMetricValue('etcd_mvcc_db_total_size_in_bytes') ?? 0,
-            dbSizeUse: findMetricValue('etcd_mvcc_db_total_size_in_use_in_bytes') ?? 0,
-            clientConns: findMetricValue('grpc_server_handled_total', (samples) => {
-                const unarySamples = samples.filter((s) => s.labels?.["grpc_type"] === "unary");
-                return unarySamples.reduce((sum, s) => sum + Number(s.value), 0).toString();
-            }) ?? 0,
-            threads: findMetricValue('go_goroutines') ?? 0,
-            processMem: findMetricValue('process_resident_memory_bytes') ?? 0,
-            version: "N/A"
-        };
+        return [
+            { color: hasLeader ? "green" : "red", icon: <LuServer />, label: "Has Leader", value: hasLeader ? "Yes" : "No", help: `Leader changes seen: ${leaderChanges}` },
+            { color: "purple", icon: <LuDatabase />, label: "DB Size", value: formatBytes(dbSize).value, unit: formatBytes(dbSize).unit, help: `In use: ${formatBytes(dbSizeUse).value} ${formatBytes(dbSizeUse).unit}` },
+            { color: "blue", icon: <LuGlobe />, label: "gRPC Handled Unary", value: String(clientConns), help: "Across all services" },
+            { color: "orange", icon: <LuActivity />, label: "Memory Usage (RSS)", value: formatBytes(processMem).value, unit: formatBytes(processMem).unit, help: `Go Routines: ${threads}` },
+        ];
     }, [metricsData]);
 
-
-    const familyViews = useMemo<MetricFamilyView[]>(() => {
-        if (!metricsData) {
-            return [];
-        }
-
-        return metricsData.map((family) => {
-            return {
-                family,
-                group: classifyMetricGroup(family.name),
-                labelKeys: extractLabelKeys(family.metrics),
-            };
-        });
-    }, [metricsData]);
-
-    const searchTypeFilteredFamilies = useMemo(() => {
-        return familyViews.filter(({ family }) => {
-            if (
-                debouncedSearchQuery &&
-                !family.name.toLowerCase().includes(debouncedSearchQuery) &&
-                !family.help.toLowerCase().includes(debouncedSearchQuery)
-            ) {
-                return false;
-            }
-
-            if (selectedTypes.length > 0 && !selectedTypes.includes(family.type)) {
-                return false;
-            }
-
-            return true;
-        });
-    }, [familyViews, debouncedSearchQuery, selectedTypes]);
-
-    const groupCounts = useMemo(() => {
-        const counts = Object.fromEntries(metricGroupOrder.map((group) => [group, 0])) as Record<string, number>;
-
-        for (const item of searchTypeFilteredFamilies) {
-            counts[item.group] += 1;
-        }
-
-        return counts;
-    }, [searchTypeFilteredFamilies]);
-
-    const groupFilteredFamilies = useMemo(() => {
-        if (selectedGroups.length === 0) {
-            return searchTypeFilteredFamilies;
-        }
-
-        return searchTypeFilteredFamilies.filter((item) => selectedGroups.includes(item.group));
-    }, [searchTypeFilteredFamilies, selectedGroups]);
-
-    const labelFacets = useMemo<LabelFacet[]>(() => {
-        const facetMap = new Map<string, Map<string, number>>();
-
-        for (const { family } of groupFilteredFamilies) {
-            for (const sample of family.metrics) {
-                if (!sample.labels) {
-                    continue;
-                }
-
-                for (const [key, value] of Object.entries(sample.labels)) {
-                    const valueCounter = facetMap.get(key) ?? new Map<string, number>();
-                    valueCounter.set(value, (valueCounter.get(value) ?? 0) + 1);
-                    facetMap.set(key, valueCounter);
-                }
-            }
-        }
-
-        const facets: LabelFacet[] = [];
-        for (const [key, valueMap] of facetMap.entries()) {
-            const values = Array.from(valueMap.entries())
-                .map(([value, count]) => ({ value, count }))
-                .sort((a, b) => b.count - a.count || a.value.localeCompare(b.value));
-
-            const totalCount = values.reduce((sum, current) => sum + current.count, 0);
-            facets.push({ key, totalCount, values });
-        }
-
-        return facets.sort((a, b) => b.totalCount - a.totalCount || a.key.localeCompare(b.key));
-    }, [groupFilteredFamilies]);
-
-    const filteredFamilies = useMemo(() => {
-        const list = groupFilteredFamilies.filter(({ family }) => familyMatchesLabelFilters(family, selectedLabelFilters));
-        return [...list].sort((a, b) => a.family.name.localeCompare(b.family.name));
-    }, [groupFilteredFamilies, selectedLabelFilters]);
+    const { familyViews, filteredFamilies, groupCounts, labelFacets } = useMetricsSearch({
+        metricsData,
+        searchQuery: debouncedSearchQuery,
+        selectedGroups,
+        selectedTypes,
+        selectedLabelFilters,
+    });
 
     const activeFamily = useMemo(() => {
-        if (!activeMetricName) {
-            return null;
-        }
-
+        if (!activeMetricName) return null;
         return familyViews.find((item) => item.family.name === activeMetricName) ?? null;
     }, [familyViews, activeMetricName]);
-
-    const detailLabelColumns = useMemo(() => {
-        return activeFamily?.labelKeys ?? [];
-    }, [activeFamily]);
-
-    const detailRows = useMemo(() => {
-        if (!activeFamily) {
-            return [];
-        }
-
-        const lowerDetailSearch = detailSearchQuery.trim().toLowerCase();
-
-        return activeFamily.family.metrics.filter((sample) => {
-            if (!sampleMatchesLabelFilters(sample, selectedLabelFilters)) {
-                return false;
-            }
-
-            if (!lowerDetailSearch) {
-                return true;
-            }
-
-            const labelsText = sample.labels
-                ? Object.entries(sample.labels)
-                    .map(([key, value]) => `${key}=${value}`)
-                    .join(" ")
-                    .toLowerCase()
-                : "";
-
-            return sample.value.toLowerCase().includes(lowerDetailSearch) || labelsText.includes(lowerDetailSearch);
-        });
-    }, [activeFamily, detailSearchQuery, selectedLabelFilters]);
-
-    const detailColumns = useMemo((): ColumnDef<ParsedMetricSample, string>[] => {
-        let cols: ColumnDef<ParsedMetricSample, string>[] = detailLabelColumns.map((key) => ({
-            id: key,
-            accessorFn: (row) => row.labels?.[key] ?? "-",
-            header: key,
-            cell: (info) => info.getValue(),
-            sortingFn: (rowA, rowB, columnId) =>
-                compareMetricCellValues(rowA.getValue(columnId), rowB.getValue(columnId)),
-        }));
-
-        cols.push({
-            id: "value",
-            accessorFn: (row) => row.value,
-            header: "Value",
-            cell: (info) => info.getValue(),
-            sortingFn: (rowA, rowB, columnId) =>
-                compareMetricCellValues(rowA.getValue(columnId), rowB.getValue(columnId)),
-        });
-
-        return cols;
-    }, [detailLabelColumns]);
-
-    const detailTable = useReactTable({
-        data: detailRows,
-        columns: detailColumns,
-        state: { sorting: detailSorting },
-        onSortingChange: setDetailSorting,
-        getCoreRowModel: getCoreRowModel(),
-        getSortedRowModel: getSortedRowModel(),
-    });
 
     const appliedFilterCount =
         (debouncedSearchQuery ? 1 : 0) +
@@ -409,30 +157,16 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
 
     const handleOpenMetricDetails = (metricName: string) => {
         setActiveMetricName(metricName);
-        setDetailSearchQuery("");
-        setDetailSorting([]);
         setIsDetailDrawerOpen(true);
     };
 
-    const handleDetailDrawerOpenChange = (open: boolean) => {
-        setIsDetailDrawerOpen(open);
-        if (!open) {
-            setDetailSearchQuery("");
-            setDetailSorting([]);
-        }
-    };
-
     useEffect(() => {
-        if (!isDetailDrawerOpen || !activeMetricName) {
-            return;
-        }
+        if (!isDetailDrawerOpen || !activeMetricName) return;
 
         const metricStillExists = familyViews.some((item) => item.family.name === activeMetricName);
         if (!metricStillExists) {
             setIsDetailDrawerOpen(false);
             setActiveMetricName(null);
-            setDetailSearchQuery("");
-            setDetailSorting([]);
         }
     }, [familyViews, isDetailDrawerOpen, activeMetricName]);
 
@@ -615,7 +349,7 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
                             )}
 
                             {/* Overview Cards */}
-                            {overviewStats && (
+                            {overviewCards && (
                                 <Box>
                                     <HStack mb={4} gap={2}>
                                         <Icon fontSize="lg" color="green.500">
@@ -626,71 +360,29 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
                                         </Heading>
                                     </HStack>
                                     <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={5}>
-                                        <Card.Root variant="elevated">
-                                            <Card.Body>
-                                                <Stat.Root colorPalette={overviewStats.hasLeader ? "green" : "red"} size="lg">
-                                                    <HStack justify="space-between" mb={3}>
-                                                        <Box p={2} borderRadius="lg" bg={overviewStats.hasLeader ? "green.100" : "red.100"} color={overviewStats.hasLeader ? "green.700" : "red.700"} _dark={{ bg: overviewStats.hasLeader ? "green.900" : "red.900", color: overviewStats.hasLeader ? "green.200" : "red.200" }}>
-                                                            <Icon fontSize="xl"><LuServer /></Icon>
-                                                        </Box>
-                                                    </HStack>
-                                                    <Stat.Label>Has Leader</Stat.Label>
-                                                    <Stat.ValueText>{overviewStats.hasLeader ? "Yes" : "No"}</Stat.ValueText>
-                                                    <Stat.HelpText>Leader changes seen: {overviewStats.leaderChanges}</Stat.HelpText>
-                                                </Stat.Root>
-                                            </Card.Body>
-                                        </Card.Root>
-
-                                        <Card.Root variant="elevated">
-                                            <Card.Body>
-                                                <Stat.Root colorPalette="purple" size="lg">
-                                                    <HStack justify="space-between" mb={3}>
-                                                        <Box p={2} borderRadius="lg" bg="purple.100" color="purple.700" _dark={{ bg: "purple.900", color: "purple.200" }}>
-                                                            <Icon fontSize="xl"><LuDatabase /></Icon>
-                                                        </Box>
-                                                    </HStack>
-                                                    <Stat.Label>DB Size</Stat.Label>
-                                                    <HStack gap={1} align="baseline">
-                                                        <Stat.ValueText>{formatBytes(overviewStats.dbSize).value}</Stat.ValueText>
-                                                        <Stat.ValueUnit>{formatBytes(overviewStats.dbSize).unit}</Stat.ValueUnit>
-                                                    </HStack>
-                                                    <Stat.HelpText>In use: {formatBytes(overviewStats.dbSizeUse).value} {formatBytes(overviewStats.dbSizeUse).unit}</Stat.HelpText>
-                                                </Stat.Root>
-                                            </Card.Body>
-                                        </Card.Root>
-
-                                        <Card.Root variant="elevated">
-                                            <Card.Body>
-                                                <Stat.Root colorPalette="blue" size="lg">
-                                                    <HStack justify="space-between" mb={3}>
-                                                        <Box p={2} borderRadius="lg" bg="blue.100" color="blue.700" _dark={{ bg: "blue.900", color: "blue.200" }}>
-                                                            <Icon fontSize="xl"><LuGlobe /></Icon>
-                                                        </Box>
-                                                    </HStack>
-                                                    <Stat.Label>gRPC Handled Unary</Stat.Label>
-                                                    <Stat.ValueText>{overviewStats.clientConns}</Stat.ValueText>
-                                                    <Stat.HelpText>Across all services</Stat.HelpText>
-                                                </Stat.Root>
-                                            </Card.Body>
-                                        </Card.Root>
-
-                                        <Card.Root variant="elevated">
-                                            <Card.Body>
-                                                <Stat.Root colorPalette="orange" size="lg">
-                                                    <HStack justify="space-between" mb={3}>
-                                                        <Box p={2} borderRadius="lg" bg="orange.100" color="orange.700" _dark={{ bg: "orange.900", color: "orange.200" }}>
-                                                            <Icon fontSize="xl"><LuActivity /></Icon>
-                                                        </Box>
-                                                    </HStack>
-                                                    <Stat.Label>Memory Usage (RSS)</Stat.Label>
-                                                    <HStack gap={1} align="baseline">
-                                                        <Stat.ValueText>{formatBytes(overviewStats.processMem).value}</Stat.ValueText>
-                                                        <Stat.ValueUnit>{formatBytes(overviewStats.processMem).unit}</Stat.ValueUnit>
-                                                    </HStack>
-                                                    <Stat.HelpText>Go Routines: {overviewStats.threads}</Stat.HelpText>
-                                                </Stat.Root>
-                                            </Card.Body>
-                                        </Card.Root>
+                                        {overviewCards.map((card) => (
+                                            <Card.Root key={card.label} variant="elevated">
+                                                <Card.Body>
+                                                    <Stat.Root colorPalette={card.color} size="lg">
+                                                        <HStack justify="space-between" mb={3}>
+                                                            <Box p={2} borderRadius="lg" bg={`${card.color}.100`} color={`${card.color}.700`} _dark={{ bg: `${card.color}.900`, color: `${card.color}.200` }}>
+                                                                <Icon fontSize="xl">{card.icon}</Icon>
+                                                            </Box>
+                                                        </HStack>
+                                                        <Stat.Label>{card.label}</Stat.Label>
+                                                        {card.unit ? (
+                                                            <HStack gap={1} align="baseline">
+                                                                <Stat.ValueText>{card.value}</Stat.ValueText>
+                                                                <Stat.ValueUnit>{card.unit}</Stat.ValueUnit>
+                                                            </HStack>
+                                                        ) : (
+                                                            <Stat.ValueText>{card.value}</Stat.ValueText>
+                                                        )}
+                                                        <Stat.HelpText>{card.help}</Stat.HelpText>
+                                                    </Stat.Root>
+                                                </Card.Body>
+                                            </Card.Root>
+                                        ))}
                                     </SimpleGrid>
                                 </Box>
                             )}
@@ -829,13 +521,9 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
 
             <MetricsDetailDrawer
                 open={isDetailDrawerOpen}
-                onOpenChange={handleDetailDrawerOpenChange}
+                onOpenChange={setIsDetailDrawerOpen}
                 activeFamily={activeFamily}
-                detailLabelColumns={detailLabelColumns}
-                detailSearchQuery={detailSearchQuery}
-                onDetailSearchQueryChange={setDetailSearchQuery}
-                detailRows={detailRows}
-                detailTable={detailTable}
+                selectedLabelFilters={selectedLabelFilters}
             />
         </Flex>
     );
