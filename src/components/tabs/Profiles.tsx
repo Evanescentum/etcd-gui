@@ -19,6 +19,7 @@ import type { AppConfig, Profile } from "../../api/etcd";
 import ProfileEditDialog from "../dialogs/ProfileEditDialog";
 import { useDebounce } from "use-debounce";
 import { useQueryClient } from "@tanstack/react-query";
+import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
 export interface ProfilesProps {
   config: AppConfig;
@@ -56,9 +57,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       await initializeEtcdClient();
 
       // Invalidate all queries related to the old profile
-      queryClient.invalidateQueries({ queryKey: ["etcd-items"] });
-      queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
-      queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
+      queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvRoot });
       queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
       queryClient.invalidateQueries({ queryKey: ["metrics"] });
 
@@ -178,9 +177,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       if (selectedProfile.originalName === config.current_profile) {
         await initializeEtcdClient();
         // Manually invalidate all caches for the current profile
-        queryClient.invalidateQueries({ queryKey: ["etcd-items"] });
-        queryClient.invalidateQueries({ queryKey: ["etcd-keys-only"] });
-        queryClient.invalidateQueries({ queryKey: ["etcd-values-in-range"] });
+        queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvRoot });
         queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
         queryClient.invalidateQueries({ queryKey: ["metrics"] });
       }

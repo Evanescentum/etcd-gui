@@ -4,26 +4,30 @@ import { Button, CloseButton, Dialog, Field, Input, Textarea, VStack } from "@ch
 import { codeInputProps } from "@/utils/inputProps";
 
 import { HiX } from "react-icons/hi";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toaster } from "../ui/toaster";
+import { useActiveProfile } from "@/contexts/active-profile";
+import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
 
 interface AddKeyDialogProps {
     defaultKeyPrefix: string;
     onClose: () => void;
-    refetch: () => void;
 }
 
 function AddKeyDialog({
     defaultKeyPrefix,
-    onClose,
-    refetch
+    onClose
 }: AddKeyDialogProps) {
+    const queryClient = useQueryClient();
+    const { activeProfile } = useActiveProfile();
     const [dialogNewKey, setDialogNewKey] = useState(defaultKeyPrefix);
     const [dialogNewValue, setDialogNewValue] = useState("");
     const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
         mutationFn: async ({ key, value }) => await putEtcdItem(key, value),
-        onSuccess: () => refetch(),
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
+        },
         onError: (error: String) => {
             console.error("Failed to add etcd item:", error);
             toaster.create({ type: "error", title: "Add Key Failed", description: error, closable: true });

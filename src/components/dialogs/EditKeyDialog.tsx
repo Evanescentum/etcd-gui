@@ -5,27 +5,31 @@ import { useColorModeValue } from "../../components/ui/color-mode";
 import { putEtcdItem } from "@/api/etcd";
 import { HiX } from "react-icons/hi";
 import { toaster } from "../ui/toaster";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useActiveProfile } from "@/contexts/active-profile";
+import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
 interface EditKeyDialogProps {
     keyToEdit: string;
     valueToEdit: string;
     onClose: () => void;
-    refetch: () => void;
 }
 
 function EditKeyDialog({
     keyToEdit,
     valueToEdit,
-    onClose,
-    refetch
+    onClose
 }: EditKeyDialogProps) {
+    const queryClient = useQueryClient();
+    const { activeProfile } = useActiveProfile();
     const [dialogKey, setDialogKey] = useState(keyToEdit);
     const [dialogValue, setDialogValue] = useState(valueToEdit);
     const [isKeyEditable, setIsKeyEditable] = useState(false);
     const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
         mutationFn: async ({ key, value }) => await putEtcdItem(key, value),
-        onSuccess: () => refetch(),
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
+        },
         onError: (error: String) => {
             toaster.create({ type: "error", title: "Edit Key Failed", description: error, closable: true });
         },

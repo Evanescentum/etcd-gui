@@ -9,26 +9,30 @@ import {
 import { useEffect } from "react";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { HiX } from "react-icons/hi"
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toaster } from "../ui/toaster";
 import { deleteEtcdItem } from "@/api/etcd";
+import { useActiveProfile } from "@/contexts/active-profile";
+import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
 interface DeleteKeyDialogProps {
     keyToDelete: string;
     valueToDelete: string;
     onClose: () => void;
-    refetch: () => void;
 }
 
 function DeleteKeyDialog({
     keyToDelete,
     valueToDelete,
-    onClose,
-    refetch
+    onClose
 }: DeleteKeyDialogProps) {
+    const queryClient = useQueryClient();
+    const { activeProfile } = useActiveProfile();
     const { mutateAsync, isPending } = useMutation<void, String, { key: string }>({
         mutationFn: async ({ key }) => await deleteEtcdItem(key),
-        onSuccess: () => refetch(),
+        onSuccess: async () => {
+            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
+        },
         onError: (error: String) => {
             toaster.create({ type: "error", title: "Delete Key Failed", description: error, closable: true });
         },

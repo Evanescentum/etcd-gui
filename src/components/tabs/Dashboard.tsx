@@ -384,7 +384,6 @@ function Dashboard({ configLoading }: DashboardProps) {
         <AddKeyDialog
           defaultKeyPrefix={keyPrefix}
           onClose={() => setDialogState(null)}
-          refetch={refetch}
         />
       )}
 
@@ -394,9 +393,6 @@ function Dashboard({ configLoading }: DashboardProps) {
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={() => {
-            refetch();
-          }}
         />
       )}
 
@@ -406,7 +402,6 @@ function Dashboard({ configLoading }: DashboardProps) {
           keyToDelete={dialogState.key}
           valueToDelete={dialogState.value}
           onClose={() => setDialogState(null)}
-          refetch={refetch}
         />
       )}
 

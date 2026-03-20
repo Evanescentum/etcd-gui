@@ -1,6 +1,16 @@
-import { useQuery, UseQueryResult } from "@tanstack/react-query";
+import { useQuery, useQueryClient, UseQueryResult } from "@tanstack/react-query";
 import { EtcdItem, fetchEtcdItems, fetchEtcdKeysOnly, fetchValuesInRange, getClusterInfo, type ClusterInfo, fetchMetrics, type Endpoint, type ParsedMetricFamily } from "../api/etcd";
 import { useMemo } from "react";
+
+export const etcdQueryKeys = {
+    kvRoot: ["etcd-kv"] as const,
+    kvProfile: (profileName: string) => [...etcdQueryKeys.kvRoot, profileName] as const,
+    fullItems: (profileName: string, keyPrefix: string) => [...etcdQueryKeys.kvProfile(profileName), "items", keyPrefix] as const,
+    keysOnly: (profileName: string, keyPrefix: string) => [...etcdQueryKeys.kvProfile(profileName), "keys", keyPrefix] as const,
+    valuesInRange: (profileName: string, keyPrefix: string, paginatedKeys: string[]) => [...etcdQueryKeys.kvProfile(profileName), "values", keyPrefix, ...paginatedKeys] as const,
+    clusterInfo: (profileName: string) => ["cluster-info", profileName] as const,
+    metrics: (profileName: string, endpoint: Endpoint | null) => ["metrics", profileName, endpoint?.host ?? null, endpoint?.port ?? null] as const,
+};
 
 export interface UseEtcdItemsQueryResult {
     data: EtcdItem[];
@@ -17,8 +27,9 @@ export function useEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, sear
     currentPage: number;
     pageSize: number;
 }): UseEtcdItemsQueryResult {
+    const queryClient = useQueryClient();
     const query = useQuery({
-        queryKey: ["etcd-items", currentProfileName, keyPrefix],
+        queryKey: etcdQueryKeys.fullItems(currentProfileName, keyPrefix),
         queryFn: async () => await fetchEtcdItems(keyPrefix),
         staleTime: 1000 * 60,
         enabled
@@ -39,7 +50,9 @@ export function useEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, sear
         data: paginatedData,
         total: filteredData.length,
         loadError: query.error as unknown as string,
-        refetch: async () => { await query.refetch(); },
+        refetch: async () => {
+            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(currentProfileName) });
+        },
     };
 }
 
@@ -51,8 +64,9 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
     currentPage: number;
     pageSize: number;
 }): UseEtcdItemsQueryResult {
+    const queryClient = useQueryClient();
     const keysOnlyQuery = useQuery({
-        queryKey: ["etcd-keys-only", currentProfileName, keyPrefix],
+        queryKey: etcdQueryKeys.keysOnly(currentProfileName, keyPrefix),
         queryFn: async () => await fetchEtcdKeysOnly(keyPrefix),
         enabled
     })
@@ -70,7 +84,7 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
     const pagedKeysSet = useMemo(() => new Set(paginatedKeys), [paginatedKeys]);
 
     const valuesInRangeQuery = useQuery({
-        queryKey: ["etcd-values-in-range", currentProfileName, paginatedKeys],
+        queryKey: etcdQueryKeys.valuesInRange(currentProfileName, keyPrefix, paginatedKeys),
         queryFn: async () => await fetchValuesInRange(paginatedKeys[0], paginatedKeys[paginatedKeys.length - 1]),
         enabled: paginatedKeys.length > 0,
     })
@@ -81,7 +95,9 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
         data: valuesInRangeQuery.data?.filter(item => pagedKeysSet.has(item.key)) || [],
         total: filteredKeys.length,
         loadError: lazyLoadError as unknown as string,
-        refetch: async () => { await keysOnlyQuery.refetch(); },
+        refetch: async () => {
+            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(currentProfileName) });
+        },
     };
 }
 
@@ -90,7 +106,7 @@ export function useClusterInfoQuery({ currentProfileName, configLoading }: {
     configLoading: boolean;
 }): UseQueryResult<ClusterInfo, string> {
     return useQuery({
-        queryKey: ["cluster-info", currentProfileName],
+        queryKey: etcdQueryKeys.clusterInfo(currentProfileName),
         queryFn: async () => await getClusterInfo(),
         staleTime: 1000 * 60,
         enabled: !configLoading && !!currentProfileName,
@@ -106,7 +122,7 @@ export function useMetricsQuery({ currentProfileName, configLoading, endpoint, i
     intervalMs?: number;
 }): UseQueryResult<ParsedMetricFamily[], string> {
     return useQuery({
-        queryKey: ["metrics", currentProfileName, endpoint?.host ?? null, endpoint?.port ?? null],
+        queryKey: etcdQueryKeys.metrics(currentProfileName, endpoint),
         queryFn: async () => {
             if (!endpoint) {
                 throw new Error("Metrics endpoint is required");
