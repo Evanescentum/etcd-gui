@@ -1394,7 +1394,6 @@ dependencies = [
  "anyhow",
  "chrono",
  "etcd-client",
- "fern",
  "font-kit",
  "log",
  "octocrab",

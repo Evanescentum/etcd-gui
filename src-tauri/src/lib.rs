@@ -22,6 +22,11 @@ use crate::metrics::{fetch_metrics_text, parse_metrics_text};
 
 const UPDATE_CHECK_EVENT: &str = "update-check";
 
+fn format_log_location(module_path: Option<&str>, target: &str, line: Option<u32>) -> String {
+    let location = module_path.unwrap_or(target);
+    format!("{}:{}", location, line.unwrap_or(0))
+}
+
 #[derive(Clone, Default)]
 struct UpdateCheckWorkerControl {
     wake_signal: Arc<Notify>,
@@ -672,15 +677,14 @@ pub fn run() {
                 ])
                 .format(move |out, message, record| {
                     out.finish(format_args!(
-                        "{}[{}][{}][{}:{}] {}",
+                        "{}[{}][{}][{}] {}",
                         TimezoneStrategy::UseLocal
                             .get_now()
                             .format(&Rfc3339)
                             .unwrap(),
                         record.level(),
                         record.target(),
-                        record.file().unwrap_or("unknown"),
-                        record.line().unwrap_or(0),
+                        format_log_location(record.module_path(), record.target(), record.line()),
                         message
                     ))
                 })

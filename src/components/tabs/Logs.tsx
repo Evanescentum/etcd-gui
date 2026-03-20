@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, memo } from "react";
+import { useState, useEffect, useRef, useMemo, memo, startTransition, useDeferredValue } from "react";
 import {
     Box,
     Heading,
@@ -18,10 +18,10 @@ import {
     Select,
     Portal,
 } from "@chakra-ui/react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { codeInputProps } from "@/utils/inputProps";
 import { LuTriangleAlert, LuPause, LuPlay, LuTrash2, LuArrowDown, LuBrackets, LuSearch, LuFolderOpen } from "react-icons/lu";
 import { attachLogger } from "@tauri-apps/plugin-log"
-import { useStickToBottom } from "use-stick-to-bottom";
 import { useDebounce } from "use-debounce";
 import { openLogFolder } from "@/api/etcd";
 import { toaster } from "../ui/toaster";
@@ -41,13 +41,29 @@ const parseLogLine = (line: string) => {
     return { date, time, level, target, location, message };
 };
 
-const LogItem = memo(({ line }: { line: string }) => {
-    const parsed = parseLogLine(line);
+type ParsedLogLine = ReturnType<typeof parseLogLine>;
+
+type LogEntry = {
+    id: number;
+    raw: string;
+    lower: string;
+    parsed: ParsedLogLine;
+};
+
+const createLogEntry = (line: string, id: number): LogEntry => ({
+    id,
+    raw: line,
+    lower: line.toLowerCase(),
+    parsed: parseLogLine(line),
+});
+
+const LogItem = memo(({ entry }: { entry: LogEntry }) => {
+    const parsed = entry.parsed;
 
     if (!parsed) {
         return (
-            <Box minH="1.2em" whiteSpace="pre-wrap" wordBreak="break-all" fontFamily="mono">
-                {line}
+            <Box minH="1.2em" whiteSpace="pre-wrap" wordBreak="break-all" overflowWrap="anywhere" fontFamily="mono" width="full">
+                {entry.raw}
             </Box>
         );
     }
@@ -63,37 +79,59 @@ const LogItem = memo(({ line }: { line: string }) => {
     }[level] || "gray";
 
     return (
-        <HStack align="start" gap={2} minH="1.2em" whiteSpace="pre-wrap" wordBreak="break-all" fontFamily="mono" py={0.5}>
-            <Text color="fg.muted" fontSize="xs" whiteSpace="nowrap">
+        <Box
+            width="full"
+            maxW="full"
+            minW="0"
+            py={0.5}
+            fontFamily="mono"
+            whiteSpace="pre-wrap"
+            wordBreak="normal"
+            overflowWrap="anywhere"
+            lineHeight="1.6"
+        >
+            <Text as="span" color="fg.muted" fontSize="xs">
                 {date} {time}
-            </Text>
-            <Badge size="xs" colorPalette={levelColor} variant="subtle" width="10" justifyContent="center">
+            </Text>{" "}
+            <Badge
+                as="span"
+                size="xs"
+                colorPalette={levelColor}
+                variant="subtle"
+                justifyContent="center"
+                verticalAlign="text-bottom"
+                mx={0.5}
+            >
                 {level}
-            </Badge>
-            <Text color="fg.subtle" fontSize="xs" fontWeight="bold">
+            </Badge>{" "}
+            <Text as="span" color="fg.subtle" fontSize="xs" fontWeight="bold">
                 [{target}]
-            </Text>
-            <Text color="fg.muted" fontSize="xs" whiteSpace="nowrap">
+            </Text>{" "}
+            <Text as="span" color="fg.muted" fontSize="xs">
                 [{location}]
-            </Text>
-            <Text flex="1" color={level === "ERROR" ? "red.fg" : "fg.default"}>
+            </Text>{" "}
+            <Text as="span" color={level === "ERROR" ? "red.fg" : "fg.default"}>
                 {message}
             </Text>
-        </HStack>
+        </Box>
     );
 });
 
 
 function Logs() {
-    const [logs, setLogs] = useState<string[]>([]);
+    const [logs, setLogs] = useState<LogEntry[]>([]);
     const [isWatching, setIsWatching] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [filterQuery, setFilterQuery] = useState("");
     const [filterLevel, setFilterLevel] = useState("ALL");
+    const [isAtBottom, setIsAtBottom] = useState(true);
     const [debouncedFilterQuery] = useDebounce(filterQuery, 300);
     const unwatchFnRef = useRef<(() => void) | null>(null);
     const logBufferRef = useRef<string[]>([]);
-    const sticky = useStickToBottom();
+    const logIdRef = useRef(0);
+    const viewportRef = useRef<HTMLDivElement | null>(null);
+    const isAtBottomRef = useRef(true);
+    const deferredLogs = useDeferredValue(logs);
 
     const levelCollection = createListCollection({
         items: [
@@ -107,24 +145,41 @@ function Logs() {
     });
 
     const filteredLogs = useMemo(() => {
-        let result = logs;
+        let result = deferredLogs;
 
         // Filter by level
         if (filterLevel !== "ALL") {
-            result = result.filter(log => {
-                const parsed = parseLogLine(log);
-                return parsed ? parsed.level === filterLevel : false;
-            });
+            result = result.filter(log => log.parsed?.level === filterLevel);
         }
 
         // Filter by query
         if (debouncedFilterQuery) {
             const lowerQuery = debouncedFilterQuery.toLowerCase();
-            result = result.filter(log => log.toLowerCase().includes(lowerQuery));
+            result = result.filter(log => log.lower.includes(lowerQuery));
         }
 
         return result;
-    }, [logs, debouncedFilterQuery, filterLevel]);
+    }, [deferredLogs, debouncedFilterQuery, filterLevel]);
+
+    const rowVirtualizer = useVirtualizer({
+        count: filteredLogs.length,
+        getScrollElement: () => viewportRef.current,
+        estimateSize: () => 32,
+        overscan: 12,
+        getItemKey: (index) => filteredLogs[index]?.id ?? index,
+    });
+
+    const handleViewportScroll = (event: React.UIEvent<HTMLDivElement>) => {
+        const viewport = event.currentTarget;
+        const nextIsAtBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24;
+        isAtBottomRef.current = nextIsAtBottom;
+        setIsAtBottom((current) => (current === nextIsAtBottom ? current : nextIsAtBottom));
+    };
+
+    const scrollToBottom = () => {
+        if (filteredLogs.length === 0) return;
+        rowVirtualizer.scrollToIndex(filteredLogs.length - 1, { align: "end" });
+    };
 
     const startWatching = async () => {
         if (unwatchFnRef.current) return;
@@ -152,16 +207,28 @@ function Logs() {
     useEffect(() => {
         const interval = setInterval(() => {
             if (logBufferRef.current.length > 0) {
-                setLogs((prevLogs) => {
-                    const newLogs = [...prevLogs, ...logBufferRef.current];
-                    logBufferRef.current = [];
-                    return newLogs;
+                const pendingLines = logBufferRef.current;
+                logBufferRef.current = [];
+                const pendingEntries = pendingLines.map((line) => createLogEntry(line, logIdRef.current++));
+
+                startTransition(() => {
+                    setLogs((prevLogs) => [...prevLogs, ...pendingEntries]);
                 });
             }
         }, 100); // Flush every 100ms
 
         return () => clearInterval(interval);
     }, []);
+
+    useEffect(() => {
+        if (!isAtBottomRef.current || filteredLogs.length === 0) return;
+
+        const frameId = requestAnimationFrame(() => {
+            scrollToBottom();
+        });
+
+        return () => cancelAnimationFrame(frameId);
+    }, [filteredLogs.length]);
 
     const stopWatching = async () => {
         if (unwatchFnRef.current) {
@@ -190,6 +257,14 @@ function Logs() {
                 type: "error"
             });
         }
+    };
+
+    const handleClearLogs = () => {
+        logBufferRef.current = [];
+        logIdRef.current = 0;
+        isAtBottomRef.current = true;
+        setIsAtBottom(true);
+        setLogs([]);
     };
 
     const emptyState = () => {
@@ -279,7 +354,7 @@ function Logs() {
                         {!isWatching ? <LuPlay /> : <LuPause />}
                         {!isWatching ? "Start" : "Pause"}
                     </Button>
-                    <Button size="xs" variant="ghost" colorPalette="red" onClick={() => { setLogs([]); }}>
+                    <Button size="xs" variant="ghost" colorPalette="red" onClick={handleClearLogs}>
                         <LuTrash2 /> Clear
                     </Button>
                     <Button size="xs" variant="outline" onClick={handleOpenLogFolder}>
@@ -301,8 +376,14 @@ function Logs() {
             {/* Log Content */}
             <Box flex="1" overflow="hidden" position="relative" bg="bg.subtle">
                 <ScrollArea.Root h="100%" w="100%" variant="always">
-                    <ScrollArea.Viewport ref={sticky.scrollRef} h="100%" w="100%">
-                        <ScrollArea.Content ref={sticky.contentRef}>
+                    <ScrollArea.Viewport
+                        ref={viewportRef}
+                        h="100%"
+                        w="100%"
+                        onScroll={handleViewportScroll}
+                        style={{ contain: "strict", overflowAnchor: "none" }}
+                    >
+                        <ScrollArea.Content>
                             <Box p={4} color="fg.default" fontFamily="mono" fontSize="sm">
                                 {filteredLogs.length === 0 ? (
                                     logs.length === 0 ? emptyState() : (
@@ -312,7 +393,26 @@ function Logs() {
                                         </Flex>
                                     )
                                 ) : (
-                                    filteredLogs.map((line, index) => <LogItem key={index} line={line} />)
+                                    <Box height={`${rowVirtualizer.getTotalSize()}px`} position="relative" width="full">
+                                        {rowVirtualizer.getVirtualItems().map((virtualRow) => {
+                                            const entry = filteredLogs[virtualRow.index];
+
+                                            return (
+                                                <Box
+                                                    key={virtualRow.key}
+                                                    data-index={virtualRow.index}
+                                                    ref={rowVirtualizer.measureElement}
+                                                    position="absolute"
+                                                    top="0"
+                                                    left="0"
+                                                    width="full"
+                                                    transform={`translateY(${virtualRow.start}px)`}
+                                                >
+                                                    <LogItem entry={entry} />
+                                                </Box>
+                                            );
+                                        })}
+                                    </Box>
                                 )}
                             </Box>
                         </ScrollArea.Content>
@@ -321,9 +421,9 @@ function Logs() {
                     <ScrollArea.Corner />
                 </ScrollArea.Root>
 
-                {!sticky.isAtBottom && (
+                {!isAtBottom && (
                     <Box position="absolute" bottom="4" right="4" zIndex="overlay">
-                        <IconButton size="sm" onClick={() => sticky.scrollToBottom()} rounded="full">
+                        <IconButton size="sm" onClick={scrollToBottom} rounded="full">
                             <LuArrowDown />
                         </IconButton>
                     </Box>
