@@ -38,7 +38,7 @@ export function useEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, sear
     return {
         data: paginatedData,
         total: filteredData.length,
-        loadError: query.error ? (query.error.message || "Unknown error") : null,
+        loadError: query.error as unknown as string,
         refetch: async () => { await query.refetch(); },
     };
 }
@@ -80,7 +80,7 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
     return {
         data: valuesInRangeQuery.data?.filter(item => pagedKeysSet.has(item.key)) || [],
         total: filteredKeys.length,
-        loadError: lazyLoadError ? (lazyLoadError.message || "Unknown error") : null,
+        loadError: lazyLoadError as unknown as string,
         refetch: async () => { await keysOnlyQuery.refetch(); },
     };
 }
@@ -88,7 +88,7 @@ export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileN
 export function useClusterInfoQuery({ currentProfileName, configLoading }: {
     currentProfileName: string;
     configLoading: boolean;
-}): UseQueryResult<ClusterInfo, Error> {
+}): UseQueryResult<ClusterInfo, string> {
     return useQuery({
         queryKey: ["cluster-info", currentProfileName],
         queryFn: async () => await getClusterInfo(),
@@ -104,7 +104,7 @@ export function useMetricsQuery({ currentProfileName, configLoading, endpoint, i
     isActive: boolean;
     autoRefresh: boolean;
     intervalMs?: number;
-}): UseQueryResult<ParsedMetricFamily[], Error> {
+}): UseQueryResult<ParsedMetricFamily[], string> {
     return useQuery({
         queryKey: ["metrics", currentProfileName, endpoint?.host ?? null, endpoint?.port ?? null],
         queryFn: async () => {

@@ -99,7 +99,7 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
         intervalMs: refreshInterval * 1000
     });
 
-    const errorMessage = error ? error.message : "Unknown error";
+    const errorMessage = error as unknown as string;
 
     const metricValue = (name: string): number | null => {
         const family = metricsData?.find(m => m.name === name);

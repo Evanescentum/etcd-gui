@@ -75,7 +75,6 @@ function Cluster({ configLoading }: ClusterProps) {
     }
 
     if (isError) {
-        const errorMessage = typeof error === "string" ? error : (error instanceof Error ? error.message : "Unknown error");
         return (
             <Flex direction="column" height="100vh" align="center" justify="center">
                 <EmptyState.Root>
@@ -87,7 +86,7 @@ function Cluster({ configLoading }: ClusterProps) {
                             <EmptyState.Title>Failed to Load Cluster Info</EmptyState.Title>
                             <EmptyState.Description>
                                 <Text color="red.500" fontWeight="medium">
-                                    {errorMessage}
+                                    {error}
                                 </Text>
                             </EmptyState.Description>
                             <Button onClick={() => refetch()} mt={4}>
