@@ -1,13 +1,15 @@
 import { useMemo, useState, useEffect } from "react";
-import { Button, CloseButton, Dialog, Field, Text, VStack, IconButton, HStack, Box, Table, Flex, Heading, Spinner } from "@chakra-ui/react";
+import { Button, CloseButton, Dialog, Field, Text, VStack, IconButton, HStack, Box, Table, Flex, Heading, Spinner, Select, Portal, SegmentGroup, createListCollection } from "@chakra-ui/react";
 import { HiX } from "react-icons/hi";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { toaster } from "../ui/toaster";
-import { LuCopy, LuHistory, LuChevronLeft, LuChevronRight, LuChevronsRight } from "react-icons/lu";
+import { LuCheck, LuCopy, LuHistory, LuChevronLeft, LuChevronRight, LuChevronsRight } from "react-icons/lu";
 import { EtcdItem, getKeyAtRevision } from "../../api/etcd";
 import { useDebounce } from "use-debounce";
 import AnnotatedText from "../AnnotatedText";
 import PathSelectionButton from "../PathSelectionButton";
+import CodeViewer from "../CodeViewer";
+import { detectLanguage, type DetectedLanguage } from "../../utils/languageDetect";
 
 interface ViewValueDialogProps {
     keyToView: string;
@@ -17,6 +19,14 @@ interface ViewValueDialogProps {
     onNavigate?: (path: string) => void;
 }
 
+type CopyTarget = "main" | "history" | null;
+type DisplayMode = "pretty" | "raw";
+
+const displayModeOptions = [
+    { label: "Pretty", value: "pretty" },
+    { label: "Raw", value: "raw" },
+];
+
 function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: ViewValueDialogProps) {
     const [showHistory, setShowHistory] = useState(false);
     const [historyStack, setHistoryStack] = useState<EtcdItem[]>([]);
@@ -25,6 +35,9 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
     const [showSpinner] = useDebounce(loadingHistory, 200);
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
     const [buttonPosition, setButtonPosition] = useState<{ x: number; y: number } | null>(null);
+    const [languageOverride, setLanguageOverride] = useState<DetectedLanguage | null>(null);
+    const [displayMode, setDisplayMode] = useState<DisplayMode>("pretty");
+    const [copiedTarget, setCopiedTarget] = useState<CopyTarget>(null);
 
     // Initialize history stack with current item
     useEffect(() => {
@@ -44,6 +57,18 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
         window.addEventListener("keydown", handleKeyDown);
         return () => window.removeEventListener("keydown", handleKeyDown);
     }, [onClose]);
+
+    useEffect(() => {
+        if (!copiedTarget) {
+            return;
+        }
+
+        const timer = window.setTimeout(() => {
+            setCopiedTarget(null);
+        }, 1400);
+
+        return () => window.clearTimeout(timer);
+    }, [copiedTarget]);
 
     const handleTextSelection = () => {
         const selection = window.getSelection();
@@ -70,24 +95,38 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
 
     const currentHistoryItem = historyStack[historyIndex];
 
-    const { isJson, pretty } = useMemo(() => {
-        try {
-            const parsed = JSON.parse(valueToView);
-            return { isJson: true, pretty: JSON.stringify(parsed, null, 2) };
-        } catch {
-            return { isJson: false, pretty: valueToView };
-        }
-    }, [valueToView]);
+    const detected = useMemo(() => detectLanguage(valueToView), [valueToView]);
+    const historyDetected = useMemo(
+        () => currentHistoryItem ? detectLanguage(currentHistoryItem.value) : null,
+        [currentHistoryItem],
+    );
+    const language = languageOverride ?? detected.language;
+    const prettyValue = useMemo(() => {
+        if (!languageOverride || languageOverride === detected.language) return detected.formatted;
+        return valueToView;
+    }, [languageOverride, detected, valueToView]);
 
-    const handleCopyValue = async (text: string) => {
+    const displayedValue = displayMode === "pretty" ? prettyValue : valueToView;
+    const displayedHistoryValue = useMemo(() => {
+        if (!currentHistoryItem) {
+            return "";
+        }
+
+        if (displayMode === "raw") {
+            return currentHistoryItem.value;
+        }
+
+        if (historyDetected && (!languageOverride || languageOverride === historyDetected.language)) {
+            return historyDetected.formatted;
+        }
+
+        return currentHistoryItem.value;
+    }, [currentHistoryItem, displayMode, historyDetected, languageOverride]);
+
+    const handleCopyValue = async (text: string, target: Exclude<CopyTarget, null>) => {
         try {
             await writeText(text);
-            toaster.create({
-                title: "Copied",
-                description: "Value copied to clipboard",
-                type: "success",
-                closable: true,
-            });
+            setCopiedTarget(target);
         } catch (error) {
             toaster.create({
                 title: "Copy failed",
@@ -141,7 +180,20 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
         setHistoryIndex(0);
     };
 
-    const textPatternIndicator = isJson ? <Text as="span" fontSize="xs" color="green.500">(JSON, pretty)</Text> : null;
+    const languageLabels: Record<DetectedLanguage, string> = {
+        json: "JSON",
+        yaml: "YAML",
+        xml: "XML",
+        toml: "TOML",
+        plaintext: "Plain Text",
+    };
+
+    const languageCollection = useMemo(() => createListCollection({
+        items: (["json", "yaml", "xml", "toml", "plaintext"] as DetectedLanguage[]).map((lang) => ({
+            label: `${languageLabels[lang]}${lang === detected.language ? " (auto)" : ""}`,
+            value: lang,
+        })),
+    }), [detected.language]);
 
     return (
         <Dialog.Root open size="xl">
@@ -171,16 +223,70 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
                                 </Field.Root>
                                 <Field.Root marginTop={2} maxHeight="50vh">
                                     <HStack placeSelf="stretch" justify="space-between">
-                                        <Field.Label>
-                                            Value {textPatternIndicator}
-                                        </Field.Label>
-                                        <IconButton
-                                            size="sm"
-                                            variant="subtle"
-                                            onClick={() => handleCopyValue(pretty)}
-                                        >
-                                            <LuCopy />
-                                        </IconButton>
+                                        <Field.Label>Value</Field.Label>
+                                        <HStack gap={1}>
+                                            <SegmentGroup.Root
+                                                size="xs"
+                                                value={displayMode}
+                                                onValueChange={(e) => setDisplayMode(e.value as DisplayMode)}
+                                            >
+                                                <SegmentGroup.Indicator />
+                                                <SegmentGroup.Items items={displayModeOptions} />
+                                            </SegmentGroup.Root>
+                                            <Select.Root
+                                                collection={languageCollection}
+                                                value={[language]}
+                                                onValueChange={(e) => {
+                                                    const val = e.value[0] as DetectedLanguage;
+                                                    setLanguageOverride(val === detected.language ? null : val);
+                                                }}
+                                                positioning={{ strategy: "fixed" }}
+                                                size="xs"
+                                                width="7rem"
+                                            >
+                                                <Select.HiddenSelect />
+                                                <Select.Control>
+                                                    <Select.Trigger>
+                                                        <Select.ValueText />
+                                                    </Select.Trigger>
+                                                    <Select.IndicatorGroup>
+                                                        <Select.Indicator />
+                                                    </Select.IndicatorGroup>
+                                                </Select.Control>
+                                                <Portal>
+                                                    <Select.Positioner>
+                                                        <Select.Content zIndex={1600}>
+                                                            {languageCollection.items.map((item) => (
+                                                                <Select.Item item={item} key={item.value}>
+                                                                    {item.label}
+                                                                    <Select.ItemIndicator />
+                                                                </Select.Item>
+                                                            ))}
+                                                        </Select.Content>
+                                                    </Select.Positioner>
+                                                </Portal>
+                                            </Select.Root>
+                                            <IconButton
+                                                size="sm"
+                                                variant="subtle"
+                                                aria-label={copiedTarget === "main" ? "Copied value" : "Copy value"}
+                                                colorPalette={copiedTarget === "main" ? "green" : undefined}
+                                                transition="background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease"
+                                                onClick={() => handleCopyValue(displayedValue, "main")}
+                                            >
+                                                <Box
+                                                    as="span"
+                                                    display="inline-flex"
+                                                    alignItems="center"
+                                                    justifyContent="center"
+                                                    transition="transform 0.18s ease, opacity 0.18s ease"
+                                                    transform={copiedTarget === "main" ? "scale(1)" : "scale(0.92)"}
+                                                    opacity={1}
+                                                >
+                                                    {copiedTarget === "main" ? <LuCheck /> : <LuCopy />}
+                                                </Box>
+                                            </IconButton>
+                                        </HStack>
                                     </HStack>
                                     <Box
                                         borderWidth="1px"
@@ -194,7 +300,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
                                             setButtonPosition(null);
                                         }}
                                     >
-                                        <AnnotatedText text={pretty} fontFamily="mono" fontSize="sm" whiteSpace="pre" overflowWrap="normal" />
+                                        <CodeViewer code={displayedValue} language={language} />
                                     </Box>
                                 </Field.Root>
                             </Dialog.Body>
@@ -320,8 +426,25 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
                                         {/* Value Display */}
                                         <HStack justify="space-between">
                                             <Text fontSize="xs" color="fg.muted" fontWeight="bold">Value</Text>
-                                            <IconButton size="xs" variant="ghost" onClick={() => handleCopyValue(currentHistoryItem.value)}>
-                                                <LuCopy />
+                                            <IconButton
+                                                size="xs"
+                                                variant="ghost"
+                                                aria-label={copiedTarget === "history" ? "Copied historical value" : "Copy historical value"}
+                                                colorPalette={copiedTarget === "history" ? "green" : undefined}
+                                                transition="background-color 0.18s ease, color 0.18s ease, border-color 0.18s ease"
+                                                onClick={() => handleCopyValue(displayedHistoryValue, "history")}
+                                            >
+                                                <Box
+                                                    as="span"
+                                                    display="inline-flex"
+                                                    alignItems="center"
+                                                    justifyContent="center"
+                                                    transition="transform 0.18s ease, opacity 0.18s ease"
+                                                    transform={copiedTarget === "history" ? "scale(1)" : "scale(0.92)"}
+                                                    opacity={1}
+                                                >
+                                                    {copiedTarget === "history" ? <LuCheck /> : <LuCopy />}
+                                                </Box>
                                             </IconButton>
                                         </HStack>
                                         <Box maxHeight="30vh" overflowY="auto" borderWidth="1px" borderRadius="md" p={3} bg="bg.subtle" position="relative">
@@ -330,7 +453,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
                                                     <Spinner size="sm" />
                                                 </Flex>
                                             )}
-                                            <AnnotatedText text={currentHistoryItem.value} fontFamily="mono" fontSize="xs" whiteSpace="pre-wrap" wordBreak="break-all" />
+                                            <CodeViewer code={displayedHistoryValue} language={language} />
                                         </Box>
                                     </VStack>
                                 )}
