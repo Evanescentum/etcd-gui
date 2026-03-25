@@ -70,6 +70,7 @@ function Dashboard({ configLoading }: DashboardProps) {
   const [keyPrefix, setKeyPrefix] = useState("/");
   const [debouncedKeyPrefix] = useDebounce(keyPrefix, 500); // Debounce keyPrefix to avoid too many queries
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
@@ -81,7 +82,7 @@ function Dashboard({ configLoading }: DashboardProps) {
     enabled: !configLoading && kvLoadMethod === "Lazy",
     keyPrefix: debouncedKeyPrefix,
     currentProfileName: activeProfile.name,
-    searchQuery,
+    searchQuery: debouncedSearchQuery,
     currentPage,
     pageSize
   });
@@ -90,7 +91,7 @@ function Dashboard({ configLoading }: DashboardProps) {
     enabled: !configLoading && kvLoadMethod === "Full",
     keyPrefix: debouncedKeyPrefix,
     currentProfileName: activeProfile.name,
-    searchQuery,
+    searchQuery: debouncedSearchQuery,
     currentPage,
     pageSize
   });
