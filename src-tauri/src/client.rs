@@ -24,9 +24,9 @@ pub async fn connect(profile: &Profile) -> Result<etcd_client::Client, String> {
 
     // Build connection options
     let mut options = ConnectOptions::new();
-    if let Some((username, _)) = &profile.user {
+    if let Some((username, password)) = &profile.user {
         log::debug!("Using authentication for user: {}", username);
-        options = options.with_user(username, profile.user.as_ref().unwrap().1.as_str());
+        options = options.with_user(username, password.as_str());
     }
     if let Some(timeout) = profile.timeout_ms {
         options = options.with_timeout(std::time::Duration::from_millis(timeout));

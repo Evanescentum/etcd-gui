@@ -2,6 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use parking_lot::RwLock;
+
 use crate::config;
 use crate::snapshot::{SharedSnapshot, SnapshotKey, SnapshotStore};
 
@@ -58,13 +60,10 @@ impl AppState {
         profile.fingerprint()
     }
 
-    pub fn get_or_create_snapshot(
-        &mut self,
-        snapshot_key: SnapshotKey,
-    ) -> SharedSnapshot {
+    pub fn get_or_create_snapshot(&mut self, snapshot_key: SnapshotKey) -> SharedSnapshot {
         self.snapshots
             .entry(snapshot_key)
-            .or_insert_with(|| Arc::new(std::sync::RwLock::new(SnapshotStore::default())))
+            .or_insert_with(|| Arc::new(RwLock::new(SnapshotStore::default())))
             .clone()
     }
 
@@ -99,9 +98,8 @@ impl AppState {
             Err(e) => return Err(e),
         }
 
-        Ok(self
-            .etcd_client
+        self.etcd_client
             .as_mut()
-            .expect("Client should be initialized"))
+            .ok_or_else(|| "Client should be initialized after successful init_client".to_string())
     }
 }

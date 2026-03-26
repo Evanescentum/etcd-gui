@@ -1398,6 +1398,7 @@ dependencies = [
  "log",
  "octocrab",
  "open",
+ "parking_lot",
  "prometheus-parse",
  "reqwest",
  "semver",

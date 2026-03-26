@@ -264,10 +264,13 @@ async fn get_cluster_info(state: State<'_, Mutex<AppState>>) -> Result<ClusterIn
             client_urls: m.client_urls().to_vec(),
         })
         .collect();
+    let header = status
+        .header()
+        .ok_or_else(|| "Cluster status response did not include a header".to_string())?;
 
     Ok(ClusterInfo {
-        cluster_id: status.header().unwrap().cluster_id(),
-        member_id: status.header().unwrap().member_id(),
+        cluster_id: header.cluster_id(),
+        member_id: header.member_id(),
         version: status.version().to_string(),
         db_size: status.db_size(),
         raft_index: status.raft_index(),
@@ -642,7 +645,7 @@ pub fn run() {
                         TimezoneStrategy::UseLocal
                             .get_now()
                             .format(&Rfc3339)
-                            .unwrap(),
+                            .expect("RFC3339 formatting should succeed"),
                         record.level(),
                         record.target(),
                         format_log_location(record.module_path(), record.target(), record.line()),

@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
+
+use parking_lot::RwLock;
 
 use crate::client::KvEntry;
 
@@ -252,11 +254,7 @@ mod tests {
         let parent = KeyRange::from_prefix("/a");
         let child = KeyRange::from_prefix("/abc");
 
-        store.insert_keys([
-            b"/a/1".to_vec(),
-            b"/abc/1".to_vec(),
-            b"/abc/2".to_vec(),
-        ]);
+        store.insert_keys([b"/a/1".to_vec(), b"/abc/1".to_vec(), b"/abc/2".to_vec()]);
         store.mark_range_covered(parent);
 
         assert!(store.is_range_covered(&child));
@@ -286,7 +284,13 @@ mod tests {
         store.mark_range_covered(range.clone());
 
         let items = store.items_in_range(&range);
-        assert_eq!(items.iter().map(|item| item.key.as_str()).collect::<Vec<_>>(), vec!["/a/1", "/a/2"]);
+        assert_eq!(
+            items
+                .iter()
+                .map(|item| item.key.as_str())
+                .collect::<Vec<_>>(),
+            vec!["/a/1", "/a/2"]
+        );
         assert!(store.has_all_values_for_range(&range));
     }
 
@@ -303,7 +307,10 @@ mod tests {
         ]);
         store.mark_range_covered(range.clone());
 
-        assert_eq!(store.page_keys(&range, 1, 2), vec![b"/a/2".to_vec(), b"/a/3".to_vec()]);
+        assert_eq!(
+            store.page_keys(&range, 1, 2),
+            vec![b"/a/2".to_vec(), b"/a/3".to_vec()]
+        );
     }
 
     #[test]

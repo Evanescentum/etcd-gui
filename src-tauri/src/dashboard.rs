@@ -145,16 +145,13 @@ async fn resolve_snapshot(
         });
         let started_total = if has_search {
             None
-        } else if let Some(total) = snapshot.read().unwrap().exact_count(&range) {
+        } else if let Some(total) = snapshot.read().exact_count(&range) {
             Some(total)
         } else {
             let count = core::count_keys(client, &query.prefix, Some(revision))
                 .await
                 .map_err(|e| e.to_string())?;
-            snapshot
-                .write()
-                .unwrap()
-                .set_exact_count(range.clone(), count.total);
+            snapshot.write().set_exact_count(range.clone(), count.total);
             Some(count.total)
         };
 
@@ -173,10 +170,7 @@ async fn resolve_snapshot(
         profile_fingerprint: profile_fingerprint.to_string(),
         revision: count.revision,
     });
-    snapshot
-        .write()
-        .unwrap()
-        .set_exact_count(range.clone(), count.total);
+    snapshot.write().set_exact_count(range.clone(), count.total);
 
     Ok(ResolvedSnapshot {
         range,
@@ -197,8 +191,8 @@ async fn ensure_required_prefix_keys(
     loop {
         check_cancelled(cancelled)?;
 
-        let (covered_end, covered_count, fully_covered) = {
-            let store = snapshot.read().unwrap();
+        let (covered_end, covered_count, fully_covered): (Vec<u8>, usize, bool) = {
+            let store = snapshot.read();
             let covered_end = store.covered_prefix_end(range);
             let covered_range = KeyRange::new(range.start.clone(), covered_end.clone());
             (
@@ -224,7 +218,6 @@ async fn ensure_required_prefix_keys(
         if batch.keys.is_empty() {
             snapshot
                 .write()
-                .unwrap()
                 .mark_range_covered(KeyRange::new(covered_end.clone(), range.end.clone()));
             return Ok(());
         }
@@ -238,7 +231,7 @@ async fn ensure_required_prefix_keys(
             next_end = range.end.clone();
         }
 
-        let mut store = snapshot.write().unwrap();
+        let mut store = snapshot.write();
         store.insert_keys(batch.keys);
         store.mark_range_covered(KeyRange::new(covered_end.clone(), next_end));
     }
@@ -250,14 +243,17 @@ async fn load_page_items(
     page_keys: &[Vec<u8>],
     revision: i64,
 ) -> Result<Vec<client::KvEntry>, String> {
-    let missing_keys = snapshot.read().unwrap().missing_value_keys(page_keys);
+    let missing_keys: Vec<Vec<u8>> = {
+        let store = snapshot.read();
+        store.missing_value_keys(page_keys)
+    };
 
     if !missing_keys.is_empty() {
         let fetched = core::get_values(client, &missing_keys, Some(revision)).await?;
-        snapshot.write().unwrap().upsert_items(fetched);
+        snapshot.write().upsert_items(fetched);
     }
 
-    Ok(snapshot.read().unwrap().cached_items_for_keys(page_keys))
+    Ok(snapshot.read().cached_items_for_keys(page_keys))
 }
 
 async fn run_lazy_search(
@@ -274,7 +270,7 @@ async fn run_lazy_search(
 ) -> Result<i64, String> {
     let (page_start, page_end) = page_bounds(current_page, page_size);
 
-    if !snapshot.read().unwrap().is_range_covered(range) {
+    if !snapshot.read().is_range_covered(range) {
         let mut scanned = 0_i64;
         let mut matched = 0_i64;
 
@@ -286,7 +282,7 @@ async fn run_lazy_search(
             |keys| {
                 check_cancelled(cancelled)?;
                 scanned += keys.len() as i64;
-                snapshot.write().unwrap().insert_keys(keys.clone());
+                snapshot.write().insert_keys(keys.clone());
 
                 for key in &keys {
                     if matches_key_bytes(key, search) {
@@ -306,12 +302,11 @@ async fn run_lazy_search(
         )
         .await?;
 
-        snapshot.write().unwrap().mark_range_covered(range.clone());
+        snapshot.write().mark_range_covered(range.clone());
     }
 
     let matching_keys: Vec<_> = snapshot
         .read()
-        .unwrap()
         .keys_in_range(range)
         .into_iter()
         .filter(|key| matches_key_bytes(key, search))
@@ -344,7 +339,7 @@ async fn run_full_search(
 
     // Fast path: snapshot already has all data
     {
-        let store = snapshot.read().unwrap();
+        let store = snapshot.read();
         if store.is_range_covered(range) && store.has_all_values_for_range(range) {
             let matching: Vec<_> = store
                 .items_in_range(range)
@@ -371,7 +366,7 @@ async fn run_full_search(
         check_cancelled(cancelled)?;
 
         scanned += items.len() as i64;
-        snapshot.write().unwrap().upsert_items(items.clone());
+        snapshot.write().upsert_items(items.clone());
 
         for item in items {
             if matches_item(&item, search, LoadMode::Full) {
@@ -405,7 +400,7 @@ async fn run_full_search(
     })
     .await?;
 
-    snapshot.write().unwrap().mark_range_covered(range.clone());
+    snapshot.write().mark_range_covered(range.clone());
 
     if !page_sent {
         send_event(on_event, QueryEvent::PageChunk { items: page_items })?;
@@ -480,7 +475,7 @@ async fn run_dashboard_query(
         let needed_keys = required_key_count(page_start, page_size, exact_total);
 
         let can_fast_path = {
-            let store = resolved.snapshot.read().unwrap();
+            let store = resolved.snapshot.read();
             should_try_first_page_full_fast_path(
                 current_page,
                 query.load_mode,
@@ -511,7 +506,7 @@ async fn run_dashboard_query(
                     )
                 };
 
-                let mut store = resolved.snapshot.write().unwrap();
+                let mut store = resolved.snapshot.write();
                 store.upsert_items(page_items.clone());
                 store.mark_range_covered(KeyRange::new(resolved.range.start.clone(), next_end));
                 drop(store);
@@ -533,7 +528,7 @@ async fn run_dashboard_query(
             )
             .await?;
 
-            let page_keys = resolved.snapshot.read().unwrap().page_keys(
+            let page_keys = resolved.snapshot.read().page_keys(
                 &resolved.range,
                 page_start,
                 page_size as usize,
