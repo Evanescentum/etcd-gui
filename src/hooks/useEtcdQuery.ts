@@ -1,104 +1,311 @@
-import { useQuery, useQueryClient, UseQueryResult } from "@tanstack/react-query";
-import { EtcdItem, fetchEtcdItems, fetchEtcdKeysOnly, fetchValuesInRange, getClusterInfo, type ClusterInfo, fetchMetrics, type Endpoint, type ParsedMetricFamily } from "../api/etcd";
-import { useMemo } from "react";
+import { useQuery, UseQueryResult } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+    EtcdItem,
+    cancelDashboardQuery,
+    type DashboardQueryLoadMode,
+    getClusterInfo,
+    type ClusterInfo,
+    fetchMetrics,
+    type Endpoint,
+    type ParsedMetricFamily,
+    streamDashboardQuery,
+} from "../api/etcd";
 
 export const etcdQueryKeys = {
     kvRoot: ["etcd-kv"] as const,
     kvProfile: (profileName: string) => [...etcdQueryKeys.kvRoot, profileName] as const,
-    fullItems: (profileName: string, keyPrefix: string) => [...etcdQueryKeys.kvProfile(profileName), "items", keyPrefix] as const,
-    keysOnly: (profileName: string, keyPrefix: string) => [...etcdQueryKeys.kvProfile(profileName), "keys", keyPrefix] as const,
-    valuesInRange: (profileName: string, keyPrefix: string, paginatedKeys: string[]) => [...etcdQueryKeys.kvProfile(profileName), "values", keyPrefix, ...paginatedKeys] as const,
     clusterInfo: (profileName: string) => ["cluster-info", profileName] as const,
     metrics: (profileName: string, endpoint: Endpoint | null) => ["metrics", profileName, endpoint?.host ?? null, endpoint?.port ?? null] as const,
 };
 
 export interface UseEtcdItemsQueryResult {
     data: EtcdItem[];
-    total: number;
+    total: number | null;
     loadError: string | null;
+    isPageLoading: boolean;
+    isSourceLoading: boolean;
+    isPageRefreshing: boolean;
+    isStreaming: boolean;
+    isTotalLoading: boolean;
     refetch: () => Promise<void>;
 }
 
-export function useEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize }: {
+interface DashboardViewState {
+    requestId: string;
+    sourceKey: string;
+    items: EtcdItem[];
+    total: number | null;
+    hasExactTotal: boolean;
+    pageReady: boolean;
+    isComplete: boolean;
+    loadError: string | null;
+    loadingScope: "source" | "page" | null;
+}
+
+function createRunId(): string {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function createEmptyDashboardView(requestId = "", sourceKey = ""): DashboardViewState {
+    return {
+        requestId,
+        sourceKey,
+        items: [],
+        total: null,
+        hasExactTotal: false,
+        pageReady: false,
+        isComplete: false,
+        loadError: null,
+        loadingScope: null,
+    };
+}
+
+function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize, refreshNonce, loadMode }: {
     enabled: boolean;
     keyPrefix: string;
     currentProfileName: string;
     searchQuery: string;
     currentPage: number;
     pageSize: number;
+    refreshNonce: number;
+    loadMode: DashboardQueryLoadMode;
 }): UseEtcdItemsQueryResult {
-    const queryClient = useQueryClient();
-    const query = useQuery({
-        queryKey: etcdQueryKeys.fullItems(currentProfileName, keyPrefix),
-        queryFn: async () => await fetchEtcdItems(keyPrefix),
-        staleTime: 1000 * 60,
-        enabled
-    });
+    const [view, setView] = useState<DashboardViewState>(() => createEmptyDashboardView());
+    const [showDelayedPageRefresh, setShowDelayedPageRefresh] = useState(false);
+    const [isFetching, setIsFetching] = useState(false);
+    const [reloadNonce, setReloadNonce] = useState(0);
+    const activeRequestIdRef = useRef("");
+    const pinnedRevisionsRef = useRef<Record<string, number>>({});
+    const viewRef = useRef(view);
+    const sourceKey = useMemo(
+        () => JSON.stringify([currentProfileName, keyPrefix, searchQuery, loadMode, refreshNonce]),
+        [currentProfileName, keyPrefix, searchQuery, loadMode, refreshNonce],
+    );
+    const revisionSourceKey = useMemo(
+        () => JSON.stringify([currentProfileName, keyPrefix, loadMode, refreshNonce]),
+        [currentProfileName, keyPrefix, loadMode, refreshNonce],
+    );
 
-    const filteredData = useMemo(() => {
-        if (!searchQuery) return query.data || [];
-        return (query.data || []).filter(k => k.key.includes(searchQuery) || k.value.includes(searchQuery));
-    }, [query.data, searchQuery]);
+    useEffect(() => {
+        viewRef.current = view;
+    }, [view]);
 
-    const paginatedData = useMemo(() => {
-        const startIndex = (currentPage - 1) * pageSize;
-        return filteredData.slice(startIndex, startIndex + pageSize);
-    }, [filteredData, currentPage, pageSize]);
+    useEffect(() => {
+        if (!enabled) {
+            setIsFetching(false);
+            return;
+        }
 
+        const requestId = createRunId();
+        const previousView = viewRef.current;
+        const sameSource = previousView.sourceKey === sourceKey;
+
+        activeRequestIdRef.current = requestId;
+        setIsFetching(true);
+        setView({
+            ...createEmptyDashboardView(requestId, sourceKey),
+            items: sameSource ? previousView.items : [],
+            total: sameSource ? previousView.total : null,
+            hasExactTotal: sameSource ? previousView.hasExactTotal : false,
+            pageReady: sameSource ? previousView.pageReady : false,
+            loadingScope: sameSource ? "page" : "source",
+        });
+
+        void streamDashboardQuery({
+            requestId,
+            prefix: keyPrefix,
+            search: searchQuery,
+            currentPage,
+            pageSize,
+            loadMode,
+            revision: pinnedRevisionsRef.current[revisionSourceKey] ?? null,
+            preservePaginationState: sameSource,
+        }, {
+            onStarted: ({ data }) => {
+                if (activeRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                pinnedRevisionsRef.current[revisionSourceKey] = data.resolvedRevision;
+
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    sourceKey,
+                    total: data.preservePaginationState && data.total === null ? current.total : data.total,
+                    hasExactTotal: data.preservePaginationState && data.total === null ? current.hasExactTotal : data.total !== null,
+                    loadError: null,
+                }));
+            },
+            onPageChunk: ({ data }) => {
+                if (activeRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    sourceKey,
+                    items: data.items,
+                    pageReady: true,
+                    loadError: null,
+                    loadingScope: null,
+                }));
+            },
+            onProgress: ({ data }) => {
+                if (activeRequestIdRef.current !== requestId || data.total === null) {
+                    return;
+                }
+
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    sourceKey,
+                    total: data.total,
+                    hasExactTotal: true,
+                }));
+            },
+            onCompleted: ({ data }) => {
+                if (activeRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    sourceKey,
+                    total: data.total,
+                    hasExactTotal: true,
+                    pageReady: true,
+                    isComplete: true,
+                    loadingScope: null,
+                }));
+            },
+            onCancelled: () => {
+                if (activeRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    isComplete: true,
+                    loadingScope: null,
+                }));
+            },
+            onError: ({ data }) => {
+                if (activeRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    sourceKey,
+                    loadError: data.message,
+                    isComplete: true,
+                    loadingScope: null,
+                }));
+            },
+        })
+            .catch((error) => {
+                if (activeRequestIdRef.current !== requestId) {
+                    return;
+                }
+
+                const message = error instanceof Error ? error.message : String(error);
+                setView((current) => ({
+                    ...current,
+                    requestId,
+                    sourceKey,
+                    loadError: message,
+                    isComplete: true,
+                    loadingScope: null,
+                }));
+            })
+            .finally(() => {
+                if (activeRequestIdRef.current === requestId) {
+                    setIsFetching(false);
+                }
+            });
+
+        return () => {
+            void cancelDashboardQuery(requestId).catch((error) => {
+                console.error("Failed to cancel dashboard query:", error);
+            });
+        };
+    }, [
+        currentPage,
+        currentProfileName,
+        enabled,
+        keyPrefix,
+        loadMode,
+        pageSize,
+        refreshNonce,
+        reloadNonce,
+        revisionSourceKey,
+        searchQuery,
+        sourceKey,
+    ]);
+
+    const isSourceLoading = enabled && !view.loadError && !view.pageReady && view.loadingScope === "source";
+    const rawPageRefreshing = enabled && !view.loadError && view.loadingScope === "page" && isFetching;
+
+    useEffect(() => {
+        if (!rawPageRefreshing) {
+            setShowDelayedPageRefresh(false);
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            setShowDelayedPageRefresh(true);
+        }, 800);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [rawPageRefreshing, view.requestId]);
+
+    const isPageRefreshing = rawPageRefreshing && showDelayedPageRefresh;
+    const isPageLoading = enabled && !view.loadError && (!view.pageReady || isPageRefreshing);
 
     return {
-        data: paginatedData,
-        total: filteredData.length,
-        loadError: query.error as unknown as string,
+        data: view.pageReady ? view.items : [],
+        total: view.total,
+        loadError: view.loadError,
+        isPageLoading,
+        isSourceLoading,
+        isPageRefreshing,
+        isStreaming: isFetching && !view.isComplete,
+        isTotalLoading: !view.hasExactTotal && !!searchQuery && !view.isComplete,
         refetch: async () => {
-            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(currentProfileName) });
+            delete pinnedRevisionsRef.current[revisionSourceKey];
+            setReloadNonce((current) => current + 1);
         },
     };
 }
 
-export function useLazyValueEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize }: {
+export function useDashboardEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize, refreshNonce, loadMode }: {
     enabled: boolean;
     keyPrefix: string;
     currentProfileName: string;
     searchQuery: string;
     currentPage: number;
     pageSize: number;
+    refreshNonce: number;
+    loadMode: DashboardQueryLoadMode;
 }): UseEtcdItemsQueryResult {
-    const queryClient = useQueryClient();
-    const keysOnlyQuery = useQuery({
-        queryKey: etcdQueryKeys.keysOnly(currentProfileName, keyPrefix),
-        queryFn: async () => await fetchEtcdKeysOnly(keyPrefix),
-        enabled
-    })
-
-    // Filter and paginate keys
-    const filteredKeys = useMemo(() => {
-        if (!searchQuery) return keysOnlyQuery.data || [];
-        return (keysOnlyQuery.data || []).filter(key => key.includes(searchQuery));
-    }, [keysOnlyQuery.data, searchQuery]);
-    const paginatedKeys = useMemo(() => {
-        const startIndex = (currentPage - 1) * pageSize;
-        return filteredKeys.slice(startIndex, startIndex + pageSize);
-    }, [filteredKeys, currentPage, pageSize]);
-
-    const pagedKeysSet = useMemo(() => new Set(paginatedKeys), [paginatedKeys]);
-
-    const valuesInRangeQuery = useQuery({
-        queryKey: etcdQueryKeys.valuesInRange(currentProfileName, keyPrefix, paginatedKeys),
-        queryFn: async () => await fetchValuesInRange(paginatedKeys[0], paginatedKeys[paginatedKeys.length - 1]),
-        enabled: paginatedKeys.length > 0,
-    })
-
-    const lazyLoadError = keysOnlyQuery.error ?? valuesInRangeQuery.error;
-
-    return {
-        data: valuesInRangeQuery.data?.filter(item => pagedKeysSet.has(item.key)) || [],
-        total: filteredKeys.length,
-        loadError: lazyLoadError as unknown as string,
-        refetch: async () => {
-            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(currentProfileName) });
-        },
-    };
+    return useDashboardItemsQuery({
+        enabled,
+        keyPrefix,
+        currentProfileName,
+        searchQuery,
+        currentPage,
+        pageSize,
+        refreshNonce,
+        loadMode,
+    });
 }
 
 export function useClusterInfoQuery({ currentProfileName, configLoading }: {

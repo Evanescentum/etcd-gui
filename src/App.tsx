@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, useCallback, useMemo } from "react";
+import { Activity, useState, useEffect, useRef, lazy, useCallback, useMemo } from "react";
 import {
   Tabs,
   EmptyState,
@@ -367,47 +367,61 @@ function App() {
 
       <Tabs.Content value="dashboard" paddingX={2} width="100%" height="100%">
         {guardedState.kind === "ready" && (
-          <Dashboard
-            configLoading={configLoading}
-          />
+          <Activity mode={activeTab === "dashboard" ? "visible" : "hidden"}>
+            <Dashboard
+              configLoading={configLoading}
+            />
+          </Activity>
         )}
       </Tabs.Content>
       <Tabs.Content value="cluster" paddingX={2} width="100%" height="100%">
         {guardedState.kind === "ready" && (
-          <Cluster
-            configLoading={configLoading}
-          />
+          <Activity mode={activeTab === "cluster" ? "visible" : "hidden"}>
+            <Cluster
+              configLoading={configLoading}
+            />
+          </Activity>
         )}
       </Tabs.Content>
       <Tabs.Content value="metrics" paddingX={2} width="100%" height="100%">
         {guardedState.kind === "ready" && (
-          <Metrics
-            configLoading={configLoading}
-            isActive={activeTab === "metrics"}
-          />
+          <Activity mode={activeTab === "metrics" ? "visible" : "hidden"}>
+            <Metrics
+              configLoading={configLoading}
+              isActive={activeTab === "metrics"}
+            />
+          </Activity>
         )}
       </Tabs.Content>
       <Tabs.Content value="profiles" paddingX={2} width="100%" height="100%">
-        <Profiles
-          config={guardedState.appConfig}
-          configLoading={configLoading}
-          saveConfig={saveConfig}
-        />
+        <Activity mode={activeTab === "profiles" ? "visible" : "hidden"}>
+          <Profiles
+            config={guardedState.appConfig}
+            configLoading={configLoading}
+            saveConfig={saveConfig}
+          />
+        </Activity>
       </Tabs.Content>
       <Tabs.Content value="logs" paddingX={2} width="100%" height="100%">
-        {guardedState.kind === "ready" && <Logs />}
+        {guardedState.kind === "ready" && (
+          <Activity mode={activeTab === "logs" ? "visible" : "hidden"}>
+            <Logs />
+          </Activity>
+        )}
       </Tabs.Content>
       <Tabs.Content value="settings" paddingX={2} width="100%" height="100%">
         {guardedState.kind === "ready" && (
-          <Settings
-            onBeforeTabChange={checkBeforeTabChangeRef}
-            config={savedConfig || guardedState.appConfig}
-            saveConfig={saveConfig}
-            updateChecking={updateChecking}
-            onCheckUpdate={handleManualCheckUpdate}
-            onConfigChange={(newConfig: AppConfig) => { setAppConfig(newConfig) }}
-            onDiscard={() => { if (savedConfig) setAppConfig(savedConfig) }}
-          />
+          <Activity mode={activeTab === "settings" ? "visible" : "hidden"}>
+            <Settings
+              onBeforeTabChange={checkBeforeTabChangeRef}
+              config={savedConfig || guardedState.appConfig}
+              saveConfig={saveConfig}
+              updateChecking={updateChecking}
+              onCheckUpdate={handleManualCheckUpdate}
+              onConfigChange={(newConfig: AppConfig) => { setAppConfig(newConfig) }}
+              onDiscard={() => { if (savedConfig) setAppConfig(savedConfig) }}
+            />
+          </Activity>
         )}
       </Tabs.Content>
     </Tabs.Root>

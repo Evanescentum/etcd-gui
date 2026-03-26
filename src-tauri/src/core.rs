@@ -4,9 +4,39 @@ use etcd_client::{Client, Error, GetOptions, SortOrder, SortTarget};
 
 use crate::client::{Item, should_refresh};
 use crate::core::split_batch::{
-    KeysOnlySplitter, KvSplitter, ValuesInRangeSplitter, execute_splittable, is_out_of_range_error,
+    KeysOnlySplitter, KvSplitter, emit_mapped_chunks, execute_splittable,
+    execute_splittable_stream, is_out_of_range_error,
 };
+use crate::snapshot::KeyRange;
 use crate::state::AppState;
+
+pub struct CountResult {
+    pub total: i64,
+    pub revision: i64,
+}
+
+pub struct KeyBatch {
+    pub keys: Vec<Vec<u8>>,
+    pub more: bool,
+}
+
+fn item_from_kv(kv: etcd_client::KeyValue) -> Option<Item> {
+    if let (Ok(key_str), Ok(value_str)) = (
+        std::str::from_utf8(kv.key()),
+        std::str::from_utf8(kv.value()),
+    ) {
+        Some(Item {
+            key: key_str.to_owned(),
+            value: value_str.to_owned(),
+            version: kv.version(),
+            create_revision: kv.create_revision(),
+            mod_revision: kv.mod_revision(),
+            lease: kv.lease(),
+        })
+    } else {
+        None
+    }
+}
 
 async fn perform_op<T, F, Fut>(state: &mut AppState, f: F) -> Result<T, String>
 where
@@ -26,7 +56,210 @@ where
     }
 }
 
+pub async fn count_items_with_client(
+    client: &mut Client,
+    prefix: &str,
+    revision: Option<i64>,
+) -> Result<CountResult, Error> {
+    let range_end = range_end_of_prefix(prefix.as_bytes());
+    client
+        .get(
+            prefix,
+            Some(apply_revision(
+                GetOptions::new()
+                    .with_serializable()
+                    .with_range(range_end)
+                    .with_count_only(),
+                revision,
+            )),
+        )
+        .await
+        .map(|response| CountResult {
+            total: response.count(),
+            revision: response
+                .header()
+                .map(|header| header.revision())
+                .unwrap_or(0),
+        })
+}
+
+pub async fn stream_items_in_range_with_client<F>(
+    client: &mut Client,
+    start_key: &[u8],
+    range_end: &[u8],
+    revision: Option<i64>,
+    mut on_chunk: F,
+) -> Result<(), String>
+where
+    F: FnMut(Vec<Item>) -> Result<(), String>,
+{
+    let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
+    let opt = apply_revision(
+        GetOptions::new()
+            .with_serializable()
+            .with_range(range_end.to_vec())
+            .with_sort(sort_target, sort_order),
+        revision,
+    );
+    let res = client.get(start_key.to_vec(), Some(opt)).await;
+
+    if !split_batch::is_out_of_range_error(&res) {
+        let mut response = res.map_err(|e| e.to_string())?;
+        return emit_mapped_chunks(&KvSplitter, response.take_kvs(), &mut on_chunk);
+    }
+
+    log::warn!("Received out-of-range error, retrying with streaming batches...");
+
+    execute_splittable_stream(
+        client,
+        KvSplitter,
+        (start_key.to_vec(), range_end.to_vec()),
+        (sort_target, sort_order),
+        revision,
+        on_chunk,
+    )
+    .await
+}
+
+pub async fn list_items_in_range_limited_with_client(
+    client: &mut Client,
+    start_key: &[u8],
+    range_end: &[u8],
+    limit: i64,
+    revision: Option<i64>,
+) -> Result<Vec<Item>, String> {
+    let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
+    client
+        .get(
+            start_key.to_vec(),
+            Some(apply_revision(
+                GetOptions::new()
+                    .with_serializable()
+                    .with_range(range_end.to_vec())
+                    .with_sort(sort_target, sort_order)
+                    .with_limit(limit),
+                revision,
+            )),
+        )
+        .await
+        .map_err(|e| e.to_string())
+        .map(|mut response| {
+            response
+                .take_kvs()
+                .into_iter()
+                .filter_map(item_from_kv)
+                .collect()
+        })
+}
+
+pub async fn stream_keys_in_range_with_client<F>(
+    client: &mut Client,
+    start_key: &[u8],
+    range_end: &[u8],
+    revision: Option<i64>,
+    mut on_chunk: F,
+) -> Result<(), String>
+where
+    F: FnMut(Vec<Vec<u8>>) -> Result<(), String>,
+{
+    let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
+    let opt = apply_revision(
+        GetOptions::new()
+            .with_serializable()
+            .with_range(range_end.to_vec())
+            .with_keys_only()
+            .with_sort(sort_target, sort_order),
+        revision,
+    );
+    let res = client.get(start_key.to_vec(), Some(opt)).await;
+
+    if !is_out_of_range_error(&res) {
+        let mut response = res.map_err(|e| e.to_string())?;
+        let kvs = response.take_kvs();
+        let keys = kvs.into_iter().map(|kv| kv.into_key_value().0).collect();
+        return on_chunk(keys);
+    }
+
+    log::warn!("Received out-of-range error, retrying with streaming batches...");
+
+    execute_splittable_stream(
+        client,
+        KeysOnlySplitter,
+        (start_key.to_vec(), range_end.to_vec()),
+        (sort_target, sort_order),
+        revision,
+        |chunk| {
+            let keys = chunk.into_iter().map(String::into_bytes).collect();
+            on_chunk(keys)
+        },
+    )
+    .await
+}
+
+pub async fn list_keys_in_range_limited_with_client(
+    client: &mut Client,
+    start_key: &[u8],
+    range_end: &[u8],
+    limit: i64,
+    revision: Option<i64>,
+) -> Result<KeyBatch, String> {
+    let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
+    client
+        .get(
+            start_key.to_vec(),
+            Some(apply_revision(
+                GetOptions::new()
+                    .with_serializable()
+                    .with_range(range_end.to_vec())
+                    .with_keys_only()
+                    .with_sort(sort_target, sort_order)
+                    .with_limit(limit),
+                revision,
+            )),
+        )
+        .await
+        .map_err(|e| e.to_string())
+        .map(|mut response| KeyBatch {
+            keys: response
+                .take_kvs()
+                .into_iter()
+                .map(|kv| kv.into_key_value().0)
+                .collect(),
+            more: response.more(),
+        })
+}
+
+pub async fn get_values_for_keys_with_client(
+    client: &mut Client,
+    keys: &[Vec<u8>],
+    revision: Option<i64>,
+) -> Result<Vec<Item>, String> {
+    let mut items = Vec::with_capacity(keys.len());
+
+    for key in keys {
+        let mut response = client
+            .get(
+                key.clone(),
+                Some(apply_revision(
+                    GetOptions::new().with_serializable(),
+                    revision,
+                )),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if let Some(kv) = response.take_kvs().into_iter().next()
+            && let Some(item) = item_from_kv(kv)
+        {
+            items.push(item);
+        }
+    }
+
+    Ok(items)
+}
+
 /// Fetch all keys with the specified prefix
+#[allow(dead_code)]
 pub async fn list_items(prefix: &str, state: &mut AppState) -> Result<Vec<Item>, String> {
     perform_op(state, |mut client| async move {
         let range_end = range_end_of_prefix(prefix.as_bytes());
@@ -41,23 +274,7 @@ pub async fn list_items(prefix: &str, state: &mut AppState) -> Result<Vec<Item>,
                 response
                     .take_kvs()
                     .into_iter()
-                    .filter_map(|kv| {
-                        if let (Ok(key_str), Ok(value_str)) = (
-                            std::str::from_utf8(kv.key()),
-                            std::str::from_utf8(kv.value()),
-                        ) {
-                            Some(Item {
-                                key: key_str.to_owned(),
-                                value: value_str.to_owned(),
-                                version: kv.version(),
-                                create_revision: kv.create_revision(),
-                                mod_revision: kv.mod_revision(),
-                                lease: kv.lease(),
-                            })
-                        } else {
-                            None
-                        }
-                    })
+                    .filter_map(item_from_kv)
                     .collect()
             });
         }
@@ -70,6 +287,7 @@ pub async fn list_items(prefix: &str, state: &mut AppState) -> Result<Vec<Item>,
             KvSplitter,
             (prefix, range_end),
             (sort_target, sort_order),
+            None,
         )
         .await
     })
@@ -90,6 +308,7 @@ fn range_end_of_prefix(prefix_key: &[u8]) -> Vec<u8> {
 }
 
 /// Fetch only keys with the specified prefix
+#[allow(dead_code)]
 pub async fn list_keys_only(prefix: &str, state: &mut AppState) -> Result<Vec<String>, String> {
     perform_op(state, |mut client| async move {
         let range_end = range_end_of_prefix(prefix.as_bytes());
@@ -117,69 +336,49 @@ pub async fn list_keys_only(prefix: &str, state: &mut AppState) -> Result<Vec<St
             KeysOnlySplitter,
             (prefix, range_end),
             (sort_target, sort_order),
+            None,
         )
         .await
     })
     .await
 }
 
-fn make_exclusive_end_from_inclusive(end_inclusive: &str) -> Vec<u8> {
-    // Append a NUL byte to create an exclusive end that includes the original last key
-    let mut end = end_inclusive.as_bytes().to_vec();
-    end.push(0);
-    end
-}
-
-/// Fetch values in a key range [start_key, end_key] inclusive, sorted by key
-pub async fn get_values_in_range(
-    start_key: &str,
-    end_inclusive: &str,
-    state: &mut AppState,
-) -> Result<Vec<Item>, String> {
-    perform_op(state, |mut client| async move {
-        let end_exclusive = make_exclusive_end_from_inclusive(end_inclusive);
-        let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
-        let opt = GetOptions::new()
-            .with_serializable()
-            .with_range(end_exclusive.clone())
-            .with_sort(sort_target, sort_order);
-        let res = client.get(start_key, Some(opt)).await;
-        if !is_out_of_range_error(&res) {
-            return res.map(|response| {
-                response
-                    .kvs()
-                    .iter()
-                    .filter_map(|kv| {
-                        match (
-                            std::str::from_utf8(kv.key()),
-                            std::str::from_utf8(kv.value()),
-                        ) {
-                            (Ok(key_str), Ok(value_str)) => Some(Item {
-                                key: key_str.to_owned(),
-                                value: value_str.to_owned(),
-                                version: kv.version(),
-                                create_revision: kv.create_revision(),
-                                mod_revision: kv.mod_revision(),
-                                lease: kv.lease(),
-                            }),
-                            _ => None,
-                        }
-                    })
-                    .collect()
-            });
-        }
-        log::warn!("Received out-of-range error, retrying...");
-
-        // Trait-based approach
-        execute_splittable(
-            &mut client,
-            ValuesInRangeSplitter,
-            (start_key, end_exclusive),
-            (sort_target, sort_order),
-        )
-        .await
+pub async fn stream_all_keys_in_range_with_client<F>(
+    client: &mut Client,
+    range: &KeyRange,
+    revision: i64,
+    mut on_chunk: F,
+) -> Result<(), String>
+where
+    F: FnMut(Vec<Vec<u8>>) -> Result<(), String>,
+{
+    stream_keys_in_range_with_client(client, &range.start, &range.end, Some(revision), |keys| {
+        on_chunk(keys)
     })
     .await
+}
+
+pub async fn stream_all_items_in_range_with_client<F>(
+    client: &mut Client,
+    range: &KeyRange,
+    revision: i64,
+    mut on_chunk: F,
+) -> Result<(), String>
+where
+    F: FnMut(Vec<Item>) -> Result<(), String>,
+{
+    stream_items_in_range_with_client(client, &range.start, &range.end, Some(revision), |items| {
+        on_chunk(items)
+    })
+    .await
+}
+
+fn apply_revision(options: GetOptions, revision: Option<i64>) -> GetOptions {
+    if let Some(revision) = revision {
+        options.with_revision(revision)
+    } else {
+        options
+    }
 }
 
 /// Add a new key-value pair to etcd
@@ -228,19 +427,7 @@ pub async fn get_key_at_revision(
             .await
             .map(|mut response| {
                 if let Some(kv) = response.take_kvs().into_iter().next() {
-                    if let (Ok(key_str), Ok(value_str)) = (
-                        std::str::from_utf8(kv.key()),
-                        std::str::from_utf8(kv.value()),
-                    ) {
-                        return Some(Item {
-                            key: key_str.to_owned(),
-                            value: value_str.to_owned(),
-                            version: kv.version(),
-                            create_revision: kv.create_revision(),
-                            mod_revision: kv.mod_revision(),
-                            lease: kv.lease(),
-                        });
-                    }
+                    return item_from_kv(kv);
                 }
                 None
             })

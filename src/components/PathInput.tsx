@@ -22,7 +22,7 @@ interface PathInputProps {
     /** Current profile name for history management */
     profileName: string;
     /** Callback when refresh is triggered */
-    onRefresh: () => void;
+    onRefresh: (value?: string) => void;
     /** Whether the refresh button should show loading state */
     loading?: boolean;
     /** Placeholder text for the input */
@@ -72,7 +72,7 @@ function PathInput({
             onChange(selectedPath);
             const updatedHistory = await savePathToHistory(selectedPath, profileName);
             setPathHistory(updatedHistory);
-            onRefresh();
+            onRefresh(selectedPath);
         }
     };
 
@@ -100,7 +100,7 @@ function PathInput({
             const updatedHistory = await savePathToHistory(value, profileName);
             setPathHistory(updatedHistory);
         }
-        onRefresh();
+        onRefresh(value);
     };
 
     return (

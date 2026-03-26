@@ -114,7 +114,7 @@ pub fn parse_metrics_text(body: String) -> Result<Vec<ParsedMetricFamily>, Strin
                 family.metrics.push({
                     ParsedMetricSample {
                         value: value.to_string(),
-                        labels: (&sample.labels)
+                        labels: sample.labels
                             .iter()
                             .map(|(key, value)| (key.clone(), value.clone()))
                             .chain(None)
@@ -127,7 +127,7 @@ pub fn parse_metrics_text(body: String) -> Result<Vec<ParsedMetricFamily>, Strin
                     family.metrics.push({
                         ParsedMetricSample {
                             value: bucket.count.to_string(),
-                            labels: (&sample.labels)
+                            labels: sample.labels
                                 .iter()
                                 .map(|(key, value)| (key.clone(), value.clone()))
                                 .chain(Some((
@@ -144,7 +144,7 @@ pub fn parse_metrics_text(body: String) -> Result<Vec<ParsedMetricFamily>, Strin
                     family.metrics.push({
                         ParsedMetricSample {
                             value: quantile.count.to_string(),
-                            labels: (&sample.labels)
+                            labels: sample.labels
                                 .iter()
                                 .map(|(key, value)| (key.clone(), value.clone()))
                                 .chain(Some((

@@ -102,11 +102,10 @@ async fn fetch_latest_stable_release(crab: &Octocrab) -> Result<Release, String>
         }
     });
 
-    Ok(releases
+    releases
         .into_iter()
-        .filter(|r| !r.prerelease)
-        .next()
-        .ok_or_else(|| "No stable releases found".to_string())?)
+        .find(|r| !r.prerelease)
+        .ok_or_else(|| "No stable releases found".to_string())
 }
 
 pub async fn check_update(

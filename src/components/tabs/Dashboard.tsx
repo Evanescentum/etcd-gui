@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useLazyValueEtcdItemsQuery, useEtcdItemsQuery } from "../../hooks/useEtcdQuery";
+import { useEffect, useState } from "react";
+import { useDashboardEtcdItemsQuery } from "../../hooks/useEtcdQuery";
 import {
   Box,
   ButtonGroup,
@@ -26,7 +26,6 @@ import {
 import { codeInputProps } from "@/utils/inputProps";
 import { LuPlus, LuTrash2, LuSearch, LuChevronLeft, LuChevronRight } from "react-icons/lu";
 import { TbEdit, TbEye } from "react-icons/tb";
-import { Tooltip } from "../../components/ui/tooltip";
 import { type EtcdItem } from "../../api/etcd";
 import AddKeyDialog from "../dialogs/AddKeyDialog";
 import DeleteKeyDialog from "../dialogs/DeleteKeyDialog";
@@ -34,22 +33,7 @@ import EditKeyDialog from "../dialogs/EditKeyDialog";
 import ViewValueDialog from "../dialogs/ViewValueDialog";
 import PathInput from "../PathInput";
 import { useDebounce } from "use-debounce";
-import { useIsFetching } from "@tanstack/react-query";
 import { useActiveProfile } from "@/contexts/active-profile";
-
-// Tooltip component for table cells
-const TableRowTooltip = (props: { content: string, maxWidth: string, children: React.ReactNode }) => {
-  return (
-    <Tooltip
-      content={<Text fontFamily="mono">{props.content}</Text>}
-      openDelay={200}
-      interactive
-      contentProps={{ width: "100%", maxWidth: props.maxWidth, bg: "bg.panel", color: "fg", borderColor: "gray.200" }}
-    >
-      {props.children}
-    </Tooltip>
-  );
-};
 
 const pageSizeCollection = createListCollection({
   items: [
@@ -67,48 +51,62 @@ interface DashboardProps {
 
 function Dashboard({ configLoading }: DashboardProps) {
   const { activeProfile, appConfig } = useActiveProfile();
-  const [keyPrefix, setKeyPrefix] = useState("/");
-  const [debouncedKeyPrefix] = useDebounce(keyPrefix, 500); // Debounce keyPrefix to avoid too many queries
+  const [keyPrefixInput, setKeyPrefixInput] = useState("/");
+  const [committedKeyPrefix, setCommittedKeyPrefix] = useState("/");
+  const [debouncedKeyPrefix] = useDebounce(keyPrefixInput, 500);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearchQuery] = useDebounce(searchQuery, 300);
-  // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(5);
+  const [refreshNonce, setRefreshNonce] = useState(0);
 
-  // Use different query strategies based on config
+  useEffect(() => {
+    setCommittedKeyPrefix(debouncedKeyPrefix);
+  }, [debouncedKeyPrefix]);
+
   const kvLoadMethod = appConfig.kv_load_method;
 
-  const lazyQueryResult = useLazyValueEtcdItemsQuery({
-    enabled: !configLoading && kvLoadMethod === "Lazy",
-    keyPrefix: debouncedKeyPrefix,
+  const queryResult = useDashboardEtcdItemsQuery({
+    enabled: !configLoading,
+    keyPrefix: committedKeyPrefix,
     currentProfileName: activeProfile.name,
     searchQuery: debouncedSearchQuery,
     currentPage,
-    pageSize
+    pageSize,
+    refreshNonce,
+    loadMode: kvLoadMethod,
   });
 
-  const fullQueryResult = useEtcdItemsQuery({
-    enabled: !configLoading && kvLoadMethod === "Full",
-    keyPrefix: debouncedKeyPrefix,
-    currentProfileName: activeProfile.name,
-    searchQuery: debouncedSearchQuery,
-    currentPage,
-    pageSize
-  });
-
-  // Select the appropriate query result based on config
   const {
     data,
     total,
     loadError,
-    refetch,
-  } = kvLoadMethod === "Lazy" ? lazyQueryResult : fullQueryResult;
+    isPageLoading,
+    isSourceLoading,
+    isPageRefreshing,
+    isStreaming,
+    isTotalLoading,
+  } = queryResult;
 
-  // Fetching state and its debounced version for better UX when loading takes time
-  const isFetching = useIsFetching() > 0;
-  const [delayedFetching] = useDebounce(isFetching, 800);
+  useEffect(() => {
+    if (total === null) {
+      return;
+    }
 
-  // Dialog state
+    const maxPage = Math.max(1, Math.ceil(total / pageSize));
+    if (currentPage > maxPage) {
+      setCurrentPage(maxPage);
+    }
+  }, [currentPage, pageSize, total]);
+
+  const handleRefresh = (value?: string) => {
+    const nextPrefix = value ?? keyPrefixInput;
+    setKeyPrefixInput(nextPrefix);
+    setCommittedKeyPrefix(nextPrefix);
+    setCurrentPage(1);
+    setRefreshNonce((current) => current + 1);
+  };
+
   const [dialogState, setDialogState] = useState<{
     action: "add" | "edit" | "delete" | "view",
     key: string,
@@ -116,17 +114,19 @@ function Dashboard({ configLoading }: DashboardProps) {
     item?: EtcdItem
   } | null>(null);
 
-  // Define the end element for search input
   const searchEndElement = searchQuery ? (
     <CloseButton
       size="xs"
       onClick={() => {
         setSearchQuery("");
-        setCurrentPage(1); // Reset to first page
+        setCurrentPage(1);
       }}
       me="-2"
     />
   ) : undefined;
+
+  const showTyping = keyPrefixInput !== committedKeyPrefix;
+  const showUnknownTotal = total === null && isTotalLoading;
 
   return (
     <Flex direction="column" height="100vh">
@@ -148,14 +148,14 @@ function Dashboard({ configLoading }: DashboardProps) {
           <VStack gap={4}>
             {/* Path navigation and refresh button */}
             <PathInput
-              value={keyPrefix}
+              value={keyPrefixInput}
               onChange={(value) => {
-                setKeyPrefix(value);
+                setKeyPrefixInput(value);
                 setCurrentPage(1);
               }}
               profileName={activeProfile.name}
-              onRefresh={refetch}
-              loading={isFetching}
+              onRefresh={handleRefresh}
+              loading={isSourceLoading}
             />
 
             {/* Search and actions */}
@@ -171,7 +171,7 @@ function Dashboard({ configLoading }: DashboardProps) {
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
-                      setCurrentPage(1); // Reset to first page when search changes
+                      setCurrentPage(1);
                     }}
                     flex="1"
                   />
@@ -201,8 +201,7 @@ function Dashboard({ configLoading }: DashboardProps) {
             </Table.Row>
           </Table.Header>
           <Table.Body>
-            {delayedFetching || (isFetching && data.length === 0) ? (
-              // Loading skeletons - show if delayedLoading or if actually loading with no data
+            {isPageLoading ? (
               Array.from({ length: 5 }).map((_, index) => (
                 <Table.Row key={`skeleton-${index}`}>
                   <Table.Cell>
@@ -220,59 +219,56 @@ function Dashboard({ configLoading }: DashboardProps) {
                 </Table.Row>
               ))
             ) : data.length > 0 ? (
-              // Actual data rows
               data.map((item) => (
                 <Table.Row key={item.key}>
                   <Table.Cell maxWidth={200}>
-                    <TableRowTooltip content={item.key} maxWidth="35vw">
-                      <Text fontFamily="mono" lineClamp={1}>{item.key}</Text>
-                    </TableRowTooltip>
+                    <Text fontFamily="mono" lineClamp={1} title={item.key}>
+                      {item.key}
+                    </Text>
                   </Table.Cell>
                   <Table.Cell maxWidth={200}>
-                    <TableRowTooltip content={item.value} maxWidth="55vw">
-                      <Text fontFamily="mono" lineClamp={1}>{item.value}</Text>
-                    </TableRowTooltip>
+                    <Text fontFamily="mono" lineClamp={1} title={item.value}>
+                      {item.value}
+                    </Text>
                   </Table.Cell>
                   <Table.Cell>
                     <HStack gap={2}>
-                      <Tooltip content="View" showArrow>
-                        <IconButton
-                          aria-label="View"
-                          children={<TbEye />}
-                          size="sm"
-                          variant="ghost"
-                          onClick={() => setDialogState({ action: "view", key: item.key, value: item.value, item })}
-                        />
-                      </Tooltip>
-                      <Tooltip content="Edit key" showArrow>
-                        <IconButton
-                          aria-label="Edit"
-                          children={<TbEdit />}
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDialogState({ action: "edit", key: item.key, value: item.value, })}
-                        />
-                      </Tooltip>
-                      <Tooltip content="Delete key" showArrow>
-                        <IconButton
-                          aria-label="Delete"
-                          children={<LuTrash2 />}
-                          size="sm"
-                          colorPalette="red"
-                          variant="ghost"
-                          onClick={() => setDialogState({ action: "delete", key: item.key, value: item.value })}
-                        />
-                      </Tooltip>
+                      <IconButton
+                        aria-label="View"
+                        title="View"
+                        children={<TbEye />}
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setDialogState({ action: "view", key: item.key, value: item.value, item })}
+                      />
+                      <IconButton
+                        aria-label="Edit"
+                        title="Edit key"
+                        children={<TbEdit />}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setDialogState({ action: "edit", key: item.key, value: item.value, })}
+                      />
+                      <IconButton
+                        aria-label="Delete"
+                        title="Delete key"
+                        children={<LuTrash2 />}
+                        size="sm"
+                        colorPalette="red"
+                        variant="ghost"
+                        onClick={() => setDialogState({ action: "delete", key: item.key, value: item.value })}
+                      />
                     </HStack>
                   </Table.Cell>
                 </Table.Row>
               ))
             ) : (
-              // Empty state
               <Table.Row>
                 <Table.Cell colSpan={3} textAlign="center" py={8}>
                   {loadError ? (
                     <Text color="red.500">Error loading data: {String(loadError)}</Text>
+                  ) : showUnknownTotal ? (
+                    <Text>Scanning matches...</Text>
                   ) : (
                     <Text>No items found</Text>
                   )}
@@ -317,46 +313,51 @@ function Dashboard({ configLoading }: DashboardProps) {
             </Select.Positioner>
           </Portal>
         </Select.Root>
-        <Pagination.Root
-          count={total}
-          pageSize={pageSize}
-          page={currentPage}
-          onPageChange={(details) => { setCurrentPage(details.page); }}
-        >
-          <ButtonGroup variant="ghost" size="sm" wrap="wrap">
-            <Pagination.PrevTrigger asChild>
-              <IconButton aria-label="Previous page">
-                <LuChevronLeft />
-              </IconButton>
-            </Pagination.PrevTrigger>
-
-            <Pagination.Items
-              render={(page) => (
-                <IconButton
-                  aria-label={`Page ${page.value}`}
-                  variant={{ base: "ghost", _selected: "outline" }}
-                >
-                  {page.value}
+        {total !== null ? (
+          <Pagination.Root
+            count={total ?? 0}
+            pageSize={pageSize}
+            page={currentPage}
+            onPageChange={(details) => { setCurrentPage(details.page); }}
+          >
+            <ButtonGroup variant="ghost" size="sm" wrap="wrap">
+              <Pagination.PrevTrigger asChild>
+                <IconButton aria-label="Previous page">
+                  <LuChevronLeft />
                 </IconButton>
-              )}
-            />
+              </Pagination.PrevTrigger>
 
-            <Pagination.NextTrigger asChild>
-              <IconButton aria-label="Next page">
-                <LuChevronRight />
-              </IconButton>
-            </Pagination.NextTrigger>
-          </ButtonGroup>
-        </Pagination.Root>
+              <Pagination.Items
+                render={(page) => (
+                  <IconButton
+                    aria-label={`Page ${page.value}`}
+                    variant={{ base: "ghost", _selected: "outline" }}
+                  >
+                    {page.value}
+                  </IconButton>
+                )}
+              />
+
+              <Pagination.NextTrigger asChild>
+                <IconButton aria-label="Next page">
+                  <LuChevronRight />
+                </IconButton>
+              </Pagination.NextTrigger>
+            </ButtonGroup>
+          </Pagination.Root>
+        ) : (
+          <Flex align="center" px={4}>
+            <Text fontSize="sm" color="fg.muted">Scanning matches...</Text>
+          </Flex>
+        )}
       </Flex>
 
-      {/* Status bar */}
       <HStack margin={2}>
-        <Skeleton loading={delayedFetching} display="inline-block" minW="20px">
+        <Skeleton loading={isPageLoading && data.length === 0} display="inline-block" minW="20px">
           <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
         </Skeleton>
-        <Skeleton loading={delayedFetching} display="inline-block" minW="20px">
-          <Badge>{total} keys found</Badge>
+        <Skeleton loading={showUnknownTotal} display="inline-block" minW="20px">
+          <Badge>{total === null ? "Counting matches..." : `${total} keys found`}</Badge>
         </Skeleton>
         {searchQuery && (
           <Badge colorPalette="blue">Search: "{searchQuery}"</Badge>
@@ -366,24 +367,36 @@ function Dashboard({ configLoading }: DashboardProps) {
           <Status.Root colorPalette="red">
             <Status.Indicator /> Connection Error
           </Status.Root>
-          : keyPrefix !== debouncedKeyPrefix ?
+          : showTyping ?
             <Status.Root colorPalette="blue">
               <Status.Indicator /> Typing...
             </Status.Root>
-            : isFetching ?
+            : isSourceLoading ?
               <Status.Root colorPalette="yellow">
-                <Status.Indicator /> Loading...
-              </Status.Root> :
-              <Status.Root colorPalette="green">
-                <Status.Indicator /> Ready
+                <Status.Indicator /> Loading data...
               </Status.Root>
+              : isPageRefreshing ?
+                <Status.Root colorPalette="yellow">
+                  <Status.Indicator /> Loading page...
+                </Status.Root>
+                : isTotalLoading ?
+                  <Status.Root colorPalette="yellow">
+                    <Status.Indicator /> Scanning...
+                  </Status.Root>
+                  : isStreaming ?
+                    <Status.Root colorPalette="yellow">
+                      <Status.Indicator /> Streaming...
+                    </Status.Root> :
+                    <Status.Root colorPalette="green">
+                      <Status.Indicator /> Ready
+                    </Status.Root>
         }
       </HStack>
 
       {/* Add Key Dialog */}
       {dialogState && dialogState.action === "add" && (
         <AddKeyDialog
-          defaultKeyPrefix={keyPrefix}
+          defaultKeyPrefix={keyPrefixInput}
           onClose={() => setDialogState(null)}
         />
       )}
@@ -414,8 +427,10 @@ function Dashboard({ configLoading }: DashboardProps) {
           item={dialogState.item}
           onClose={() => setDialogState(null)}
           onNavigate={(path) => {
-            setKeyPrefix(path);
+            setKeyPrefixInput(path);
+            setCommittedKeyPrefix(path);
             setCurrentPage(1);
+            setRefreshNonce((current) => current + 1);
           }}
         />
       )}

@@ -24,16 +24,11 @@ pub enum UpdateChannel {
     Beta,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub enum KvLoadMethod {
+    #[default]
     Lazy,
     Full,
-}
-
-impl Default for KvLoadMethod {
-    fn default() -> Self {
-        KvLoadMethod::Lazy
-    }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -84,6 +79,14 @@ impl Display for Endpoint {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}:{}", self.host, self.port)
     }
+}
+
+#[derive(Serialize)]
+struct ProfileConnectionFingerprint<'a> {
+    endpoints: &'a [Endpoint],
+    user: &'a Option<(String, String)>,
+    timeout_ms: &'a Option<u64>,
+    connect_timeout_ms: &'a Option<u64>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -138,5 +141,17 @@ impl AppConfig {
         } else {
             Ok(())
         }
+    }
+}
+
+impl Profile {
+    pub fn fingerprint(&self) -> Result<String, String> {
+        serde_json::to_string(&ProfileConnectionFingerprint {
+            endpoints: &self.endpoints,
+            user: &self.user,
+            timeout_ms: &self.timeout_ms,
+            connect_timeout_ms: &self.connect_timeout_ms,
+        })
+        .map_err(|error| format!("Failed to serialize profile fingerprint: {error}"))
     }
 }

@@ -66,7 +66,7 @@ const refreshIntervalCollection = createListCollection({
 const Metrics = ({ configLoading, isActive }: MetricsProps) => {
     const { activeProfile } = useActiveProfile();
 
-    const [selectedNode, setSelectedNode] = useState<Endpoint>(activeProfile.endpoints[0]);
+    const [selectedNodeKey, setSelectedNodeKey] = useState<string | null>(null);
     const [autoRefresh, setAutoRefresh] = useState(true);
     const [refreshInterval, setRefreshInterval] = useState(10);
     const [searchQuery, setSearchQuery] = useState("");
@@ -82,6 +82,23 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
         itemToString: endpointKey,
         itemToValue: endpointKey,
     }), [activeProfile.endpoints]);
+
+    const selectedNode = useMemo(() => {
+        if (!selectedNodeKey) {
+            return activeProfile.endpoints[0];
+        }
+
+        return activeProfile.endpoints.find((endpoint) => endpointKey(endpoint) === selectedNodeKey) ?? activeProfile.endpoints[0];
+    }, [activeProfile.endpoints, selectedNodeKey]);
+
+    useEffect(() => {
+        if (!selectedNode) {
+            return;
+        }
+
+        const nextSelectedNodeKey = endpointKey(selectedNode);
+        setSelectedNodeKey((current) => current === nextSelectedNodeKey ? current : nextSelectedNodeKey);
+    }, [selectedNode]);
 
     const {
         data: metricsData,
@@ -201,7 +218,7 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
                                     collection={nodeCollection}
                                     width="220px"
                                     value={[endpointKey(selectedNode)]}
-                                    onValueChange={(e) => { setSelectedNode(e.items[0]) }}
+                                    onValueChange={(e) => { setSelectedNodeKey(endpointKey(e.items[0])) }}
                                     disabled={nodeCollection.items.length === 0}
                                 >
                                     <Select.Control>

@@ -1,7 +1,9 @@
 mod client;
 mod config;
 mod core;
+mod dashboard;
 mod metrics;
+mod snapshot;
 mod state;
 mod update;
 
@@ -185,10 +187,7 @@ fn format_timestamp(timestamp_ms: i64) -> Result<FormattedTimestamp, String> {
         .single()
         .ok_or_else(|| format!("Invalid timestamp: {}", timestamp_ms))?;
 
-    // Format UTC time in ISO 8601
     let utc = datetime_utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-
-    // Convert to local timezone and format
     let datetime_local: DateTime<Local> = datetime_utc.into();
     let local = datetime_local.to_rfc3339_opts(chrono::SecondsFormat::Millis, false);
 
@@ -202,7 +201,7 @@ fn format_timestamp(timestamp_ms: i64) -> Result<FormattedTimestamp, String> {
 #[tauri::command]
 async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
     log::info!("Initializing etcd client...");
-    let _ = state.lock().await.etcd_client.take(); // Reset the client if it exists
+    let _ = state.lock().await.etcd_client.take();
     state
         .lock()
         .await
@@ -210,45 +209,6 @@ async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<boo
         .await
         .inspect(|_| log::info!("Etcd client initialized successfully"))
         .inspect_err(|e| log::error!("Failed to initialize client: {}", e))
-}
-
-#[tauri::command]
-async fn list_items(
-    prefix: String,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<Vec<client::Item>, String> {
-    log::debug!("Listing keys with prefix: {}", prefix);
-    // Call the client function with the provided prefix
-    let mut state = state.lock().await;
-    core::list_items(&prefix, &mut state)
-        .await
-        .inspect_err(|e| log::error!("Failed to list keys: {}", e))
-}
-
-#[tauri::command]
-async fn list_keys_only(
-    prefix: String,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<Vec<String>, String> {
-    log::debug!("Listing keys only with prefix: {}", prefix);
-    let mut state = state.lock().await;
-    core::list_keys_only(&prefix, &mut state)
-        .await
-        .inspect(|v| log::info!("Found {} keys with prefix {}", v.len(), prefix))
-        .inspect_err(|e| log::error!("Failed to list keys only: {}", e))
-}
-
-#[tauri::command]
-async fn get_values_in_range(
-    start_key: String,
-    end_inclusive: String,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<Vec<client::Item>, String> {
-    log::debug!("Getting values in range: {} ~ {}", start_key, end_inclusive);
-    let mut state = state.lock().await;
-    core::get_values_in_range(&start_key, &end_inclusive, &mut state)
-        .await
-        .inspect_err(|e| log::error!("Failed to get values in range: {}", e))
 }
 
 #[tauri::command]
@@ -262,7 +222,9 @@ async fn put_key(
     state.app_config.ensure_current_profile_unlocked()?;
     core::put_key(&key, &value, &mut state)
         .await
-        .inspect_err(|e| log::error!("Failed to put key {}: {}", key, e))
+        .inspect_err(|e| log::error!("Failed to put key {}: {}", key, e))?;
+    state.invalidate_current_profile_snapshots()?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -272,7 +234,9 @@ async fn delete_key(key: String, state: State<'_, Mutex<AppState>>) -> Result<()
     state.app_config.ensure_current_profile_unlocked()?;
     core::delete_key(&key, &mut state)
         .await
-        .inspect_err(|e| log::error!("Failed to delete key {}: {}", key, e))
+        .inspect_err(|e| log::error!("Failed to delete key {}: {}", key, e))?;
+    state.invalidate_current_profile_snapshots()?;
+    Ok(())
 }
 
 #[tauri::command]
@@ -393,6 +357,7 @@ async fn update_config(
     if should_reconnect {
         log::info!("Current profile changed, resetting client");
         app_state.etcd_client = None; // Reset the client
+        app_state.clear_snapshots();
     }
 
     log::info!("Configuration updated successfully");
@@ -483,15 +448,13 @@ async fn save_path_history(
     let history_path = get_history_file_path(&app_handle)?;
 
     // Read existing history map
-    let mut history_map: HashMap<String, Vec<String>> = match read_history_file(&history_path) {
-        Ok(h) => h,
-        Err(_) => HashMap::new(),
-    };
+    let mut history_map: HashMap<String, Vec<String>> =
+        read_history_file(&history_path).unwrap_or_default();
 
     // Get or create history for this profile
     let history = history_map
         .entry(profile_name.clone())
-        .or_insert_with(Vec::new);
+        .or_default();
 
     // Don't add duplicates, remove if exists and add to front
     history.retain(|p| p != &path);
@@ -551,15 +514,13 @@ async fn delete_path_history(
     let history_path = get_history_file_path(&app_handle)?;
 
     // Read existing history map
-    let mut history_map: HashMap<String, Vec<String>> = match read_history_file(&history_path) {
-        Ok(h) => h,
-        Err(_) => HashMap::new(),
-    };
+    let mut history_map: HashMap<String, Vec<String>> =
+        read_history_file(&history_path).unwrap_or_default();
 
     // Get or create history for this profile
     let history = history_map
         .entry(profile_name.clone())
-        .or_insert_with(Vec::new);
+        .or_default();
 
     // Remove the path from history
     history.retain(|p| p != &path);
@@ -699,9 +660,8 @@ pub fn run() {
             check_update,
             trigger_update_check,
             initialize_etcd_client,
-            list_items,
-            list_keys_only,
-            get_values_in_range,
+            dashboard::start_dashboard_query,
+            dashboard::cancel_dashboard_query,
             put_key,
             delete_key,
             get_cluster_info,

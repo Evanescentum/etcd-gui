@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core';
+import { Channel, invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 /**
@@ -11,6 +11,72 @@ export interface EtcdItem {
     create_revision: number;
     mod_revision: number;
     lease: number;
+}
+
+export type DashboardQueryLoadMode = "Lazy" | "Full";
+
+export interface DashboardQueryRequest {
+    requestId: string;
+    prefix: string;
+    search: string;
+    currentPage: number;
+    pageSize: number;
+    loadMode: DashboardQueryLoadMode;
+    revision: number | null;
+    preservePaginationState: boolean;
+}
+
+export type DashboardQueryEvent =
+    | {
+        event: 'started';
+        data: {
+            requestId: string;
+            mode: DashboardQueryLoadMode;
+            resolvedRevision: number;
+            total: number | null;
+            preservePaginationState: boolean;
+        };
+    }
+    | {
+        event: 'pageChunk';
+        data: {
+            items: EtcdItem[];
+        };
+    }
+    | {
+        event: 'progress';
+        data: {
+            scanned: number;
+            matched: number;
+            total: number | null;
+        };
+    }
+    | {
+        event: 'completed';
+        data: {
+            total: number;
+            page: number;
+            pageSize: number;
+        };
+    }
+    | {
+        event: 'cancelled';
+        data: null;
+    }
+    | {
+        event: 'error';
+        data: {
+            message: string;
+        };
+    };
+
+interface DashboardQueryHandlers {
+    onStarted?: (event: Extract<DashboardQueryEvent, { event: 'started' }>) => void;
+    onPageChunk?: (event: Extract<DashboardQueryEvent, { event: 'pageChunk' }>) => void;
+    onProgress?: (event: Extract<DashboardQueryEvent, { event: 'progress' }>) => void;
+    onCompleted?: (event: Extract<DashboardQueryEvent, { event: 'completed' }>) => void;
+    onCancelled?: () => void;
+    onError?: (event: Extract<DashboardQueryEvent, { event: 'error' }>) => void;
 }
 
 /**
@@ -121,29 +187,79 @@ export async function initializeEtcdClient(): Promise<boolean> {
     }
 }
 
-/**
- * Fetch key-value pairs from etcd with the specified prefix
- * @param prefix The key prefix to filter by (default: '/')
- */
-export async function fetchEtcdItems(prefix: string = '/'): Promise<EtcdItem[]> {
+
+export async function streamDashboardQuery(
+    query: DashboardQueryRequest,
+    handlers: DashboardQueryHandlers,
+): Promise<void> {
+    const onEvent = new Channel<DashboardQueryEvent>();
+
+    const completion = new Promise<void>((resolve, reject) => {
+        let settled = false;
+
+        const resolveOnce = () => {
+            if (!settled) {
+                settled = true;
+                resolve();
+            }
+        };
+
+        const rejectOnce = (error: unknown) => {
+            if (!settled) {
+                settled = true;
+                reject(error);
+            }
+        };
+
+        onEvent.onmessage = (message) => {
+            if (message.event === 'started') {
+                handlers.onStarted?.(message);
+                return;
+            }
+
+            if (message.event === 'pageChunk') {
+                handlers.onPageChunk?.(message);
+                return;
+            }
+
+            if (message.event === 'progress') {
+                handlers.onProgress?.(message);
+                return;
+            }
+
+            if (message.event === 'completed') {
+                handlers.onCompleted?.(message);
+                resolveOnce();
+                return;
+            }
+
+            if (message.event === 'cancelled') {
+                handlers.onCancelled?.();
+                resolveOnce();
+                return;
+            }
+
+            handlers.onError?.(message);
+            rejectOnce(new Error(message.data.message));
+        };
+    });
+
     try {
-        // Call the Rust list_items command with the specified prefix
-        const items = await invoke<EtcdItem[]>('list_items', { prefix });
-        return items;
+        await Promise.all([
+            invoke<void>('start_dashboard_query', { query, onEvent }),
+            completion,
+        ]);
     } catch (error) {
-        console.error('Error fetching etcd items:', error);
+        console.error('Error streaming dashboard query:', error);
         throw error;
     }
 }
 
-/**
- * Fetch only keys by prefix (no values), for counts and pagination
- */
-export async function fetchEtcdKeysOnly(prefix: string = '/'): Promise<string[]> {
+export async function cancelDashboardQuery(requestId: string): Promise<void> {
     try {
-        return await invoke<string[]>('list_keys_only', { prefix });
+        await invoke<void>('cancel_dashboard_query', { requestId });
     } catch (error) {
-        console.error('Error fetching etcd keys only:', error);
+        console.error('Error cancelling dashboard query:', error);
         throw error;
     }
 }
@@ -151,15 +267,6 @@ export async function fetchEtcdKeysOnly(prefix: string = '/'): Promise<string[]>
 /**
  * Fetch values in range [startKey, endKey] inclusive
  */
-export async function fetchValuesInRange(startKey: string, endKey: string): Promise<EtcdItem[]> {
-    try {
-        return await invoke<EtcdItem[]>('get_values_in_range', { startKey: startKey, endInclusive: endKey });
-    } catch (error) {
-        console.error('Error fetching values in range:', error);
-        throw error;
-    }
-}
-
 /**
  * Put a key-value pair into etcd
  * @param key The key to add

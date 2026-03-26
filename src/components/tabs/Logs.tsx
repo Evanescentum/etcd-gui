@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, memo, startTransition, useDeferredValue } from "react";
+import { useState, useEffect, useRef, useMemo, memo, useDeferredValue, useSyncExternalStore } from "react";
 import {
     Box,
     Heading,
@@ -21,41 +21,10 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { codeInputProps } from "@/utils/inputProps";
 import { LuTriangleAlert, LuPause, LuPlay, LuTrash2, LuArrowDown, LuBrackets, LuSearch, LuFolderOpen } from "react-icons/lu";
-import { attachLogger } from "@tauri-apps/plugin-log"
 import { useDebounce } from "use-debounce";
 import { openLogFolder } from "@/api/etcd";
 import { toaster } from "../ui/toaster";
-
-const LOG_REGEX = /^([^\[]+)\[([^\]]*)\]\[([^\]]*)\]\[([^\]]*)\]\s+(.*)$/;
-
-const parseLogLine = (line: string) => {
-    const match = line.match(LOG_REGEX);
-    if (!match) return null;
-
-    const [, timestamp, level, target, location, message] = match;
-
-    // Parse ISO 8601 timestamp to separate date and time
-    const date = timestamp.substring(0, 10); // 2026-02-09
-    const time = timestamp.substring(11, 19); // 01:30:27
-
-    return { date, time, level, target, location, message };
-};
-
-type ParsedLogLine = ReturnType<typeof parseLogLine>;
-
-type LogEntry = {
-    id: number;
-    raw: string;
-    lower: string;
-    parsed: ParsedLogLine;
-};
-
-const createLogEntry = (line: string, id: number): LogEntry => ({
-    id,
-    raw: line,
-    lower: line.toLowerCase(),
-    parsed: parseLogLine(line),
-});
+import { logStore, type LogEntry } from "@/stores/log-store";
 
 const LogItem = memo(({ entry }: { entry: LogEntry }) => {
     const parsed = entry.parsed;
@@ -119,16 +88,11 @@ const LogItem = memo(({ entry }: { entry: LogEntry }) => {
 
 
 function Logs() {
-    const [logs, setLogs] = useState<LogEntry[]>([]);
-    const [isWatching, setIsWatching] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    const { logs, isWatching, error } = useSyncExternalStore(logStore.subscribe, logStore.getSnapshot);
     const [filterQuery, setFilterQuery] = useState("");
     const [filterLevel, setFilterLevel] = useState("ALL");
     const [isAtBottom, setIsAtBottom] = useState(true);
     const [debouncedFilterQuery] = useDebounce(filterQuery, 300);
-    const unwatchFnRef = useRef<(() => void) | null>(null);
-    const logBufferRef = useRef<string[]>([]);
-    const logIdRef = useRef(0);
     const viewportRef = useRef<HTMLDivElement | null>(null);
     const isAtBottomRef = useRef(true);
     const deferredLogs = useDeferredValue(logs);
@@ -181,45 +145,6 @@ function Logs() {
         rowVirtualizer.scrollToIndex(filteredLogs.length - 1, { align: "end" });
     };
 
-    const startWatching = async () => {
-        if (unwatchFnRef.current) return;
-
-        try {
-            setIsWatching(true);
-            setError(null);
-
-            // Start watching
-            const unwatch = await attachLogger((record) => {
-                const newLogLine: string = record.message;
-                logBufferRef.current.push(newLogLine);
-            })
-            console.log("Started log listener");
-
-            unwatchFnRef.current = unwatch;
-        } catch (err) {
-            console.error("Failed to start watcher:", err);
-            setError(`Failed to start file watcher: ${String(err)}`);
-            setIsWatching(false);
-        }
-    };
-
-    // Flush logs buffer periodically
-    useEffect(() => {
-        const interval = setInterval(() => {
-            if (logBufferRef.current.length > 0) {
-                const pendingLines = logBufferRef.current;
-                logBufferRef.current = [];
-                const pendingEntries = pendingLines.map((line) => createLogEntry(line, logIdRef.current++));
-
-                startTransition(() => {
-                    setLogs((prevLogs) => [...prevLogs, ...pendingEntries]);
-                });
-            }
-        }, 100); // Flush every 100ms
-
-        return () => clearInterval(interval);
-    }, []);
-
     useEffect(() => {
         if (!isAtBottomRef.current || filteredLogs.length === 0) return;
 
@@ -230,20 +155,11 @@ function Logs() {
         return () => cancelAnimationFrame(frameId);
     }, [filteredLogs.length]);
 
-    const stopWatching = async () => {
-        if (unwatchFnRef.current) {
-            unwatchFnRef.current();
-            unwatchFnRef.current = null;
-        }
-        setIsWatching(false);
-        console.log("Stopped log listener");
-    };
-
     const handleTogglePause = () => {
         if (isWatching) {
-            stopWatching();
+            logStore.stopWatching();
         } else {
-            startWatching();
+            void logStore.startWatching();
         }
     };
 
@@ -260,11 +176,9 @@ function Logs() {
     };
 
     const handleClearLogs = () => {
-        logBufferRef.current = [];
-        logIdRef.current = 0;
         isAtBottomRef.current = true;
         setIsAtBottom(true);
-        setLogs([]);
+        logStore.clear();
     };
 
     const emptyState = () => {

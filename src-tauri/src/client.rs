@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::Profile;
 
 /// Represents a key-value pair from etcd
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Item {
     pub key: String,
     pub value: String,
@@ -51,4 +51,8 @@ pub fn should_refresh<T>(res: &Result<T, etcd_client::Error>) -> bool {
         }
         _ => false,
     }
+}
+
+pub fn is_invalid_auth_token_error(error: &str) -> bool {
+    error.contains("invalid auth token")
 }
