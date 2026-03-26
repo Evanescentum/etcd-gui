@@ -178,7 +178,7 @@ export interface ParsedMetricFamily {
 /**
  * Connect to an etcd cluster with the specified connection info
  */
-export async function initializeEtcdClient(): Promise<boolean> {
+export async function initializeClient(): Promise<boolean> {
     try {
         return await invoke<boolean>('initialize_etcd_client');
     } catch (error) {
@@ -272,7 +272,7 @@ export async function cancelDashboardQuery(requestId: string): Promise<void> {
  * @param key The key to add
  * @param value The value to add
  */
-export async function putEtcdItem(key: string, value: string): Promise<void> {
+export async function putKey(key: string, value: string): Promise<void> {
     try {
         await invoke<void>('put_key', { key, value });
     } catch (error) {
@@ -285,7 +285,7 @@ export async function putEtcdItem(key: string, value: string): Promise<void> {
  * Delete a key from etcd
  * @param key The key to delete
  */
-export async function deleteEtcdItem(key: string): Promise<void> {
+export async function deleteKey(key: string): Promise<void> {
     try {
         await invoke<void>('delete_key', { key });
     } catch (error) {

@@ -5,7 +5,7 @@ use crate::config::Profile;
 
 /// Represents a key-value pair from etcd
 #[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct Item {
+pub struct KvEntry {
     pub key: String,
     pub value: String,
     pub version: i64,
@@ -14,7 +14,7 @@ pub struct Item {
     pub lease: i64,
 }
 
-pub async fn new_connect(profile: &Profile) -> Result<etcd_client::Client, String> {
+pub async fn connect(profile: &Profile) -> Result<etcd_client::Client, String> {
     log::info!("Connecting to etcd with profile: {}", profile.name);
     let endpoints: Vec<String> = profile
         .endpoints
@@ -43,7 +43,7 @@ pub async fn new_connect(profile: &Profile) -> Result<etcd_client::Client, Strin
         })
 }
 
-pub fn should_refresh<T>(res: &Result<T, etcd_client::Error>) -> bool {
+pub fn is_auth_token_expired<T>(res: &Result<T, etcd_client::Error>) -> bool {
     match res {
         Err(etcd_client::Error::GRpcStatus(status)) => {
             status.code() == tonic::Code::Unauthenticated

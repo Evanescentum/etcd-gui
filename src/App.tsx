@@ -6,7 +6,7 @@ import {
   Spinner
 } from "@chakra-ui/react";
 import { LuLayoutDashboard, LuUsers, LuSettings, LuNetwork, LuFileText, LuActivity } from "react-icons/lu";
-import { initializeEtcdClient, configFileExists, getConfig, listenUpdateCheckEvents, triggerUpdateCheck, updateConfig } from "./api/etcd";
+import { initializeClient, configFileExists, getConfig, listenUpdateCheckEvents, triggerUpdateCheck, updateConfig } from "./api/etcd";
 import type { AppConfig, Profile, UpdateCheckResult } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
 import { useTheme } from "next-themes";
@@ -127,7 +127,7 @@ function App() {
 
         await loadConfig();
 
-        const result = await initializeEtcdClient();
+        const result = await initializeClient();
 
         // If result is empty string, switch to profiles tab
         if (!result) {
@@ -259,7 +259,7 @@ function App() {
       await loadConfig();
 
       // Initialize client with the newly created profile
-      const result = await initializeEtcdClient();
+      const result = await initializeClient();
 
       if (result) {
         setActiveTab("dashboard");

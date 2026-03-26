@@ -2,12 +2,10 @@ mod split_batch;
 
 use etcd_client::{Client, Error, GetOptions, SortOrder, SortTarget};
 
-use crate::client::{Item, should_refresh};
+use crate::client::{KvEntry, is_auth_token_expired};
 use crate::core::split_batch::{
-    KeysOnlySplitter, KvSplitter, emit_mapped_chunks, execute_splittable,
-    execute_splittable_stream, is_out_of_range_error,
+    KeysOnlySplitter, KvSplitter, deliver_in_chunks, is_out_of_range_error, stream_range_batched,
 };
-use crate::snapshot::KeyRange;
 use crate::state::AppState;
 
 pub struct CountResult {
@@ -20,12 +18,12 @@ pub struct KeyBatch {
     pub more: bool,
 }
 
-fn item_from_kv(kv: etcd_client::KeyValue) -> Option<Item> {
+fn item_from_kv(kv: etcd_client::KeyValue) -> Option<KvEntry> {
     if let (Ok(key_str), Ok(value_str)) = (
         std::str::from_utf8(kv.key()),
         std::str::from_utf8(kv.value()),
     ) {
-        Some(Item {
+        Some(KvEntry {
             key: key_str.to_owned(),
             value: value_str.to_owned(),
             version: kv.version(),
@@ -46,7 +44,7 @@ where
     let client = state.get_client().await?.clone();
     let res = f(client).await;
 
-    if should_refresh(&res) {
+    if is_auth_token_expired(&res) {
         log::warn!("Refreshing client connection...");
         state.etcd_client = None;
         let client = state.get_client().await?.clone();
@@ -56,7 +54,7 @@ where
     }
 }
 
-pub async fn count_items_with_client(
+pub async fn count_keys(
     client: &mut Client,
     prefix: &str,
     revision: Option<i64>,
@@ -83,7 +81,7 @@ pub async fn count_items_with_client(
         })
 }
 
-pub async fn stream_items_in_range_with_client<F>(
+pub async fn stream_items<F>(
     client: &mut Client,
     start_key: &[u8],
     range_end: &[u8],
@@ -91,7 +89,7 @@ pub async fn stream_items_in_range_with_client<F>(
     mut on_chunk: F,
 ) -> Result<(), String>
 where
-    F: FnMut(Vec<Item>) -> Result<(), String>,
+    F: FnMut(Vec<KvEntry>) -> Result<(), String>,
 {
     let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
     let opt = apply_revision(
@@ -105,12 +103,12 @@ where
 
     if !split_batch::is_out_of_range_error(&res) {
         let mut response = res.map_err(|e| e.to_string())?;
-        return emit_mapped_chunks(&KvSplitter, response.take_kvs(), &mut on_chunk);
+        return deliver_in_chunks(&KvSplitter, response.take_kvs(), &mut on_chunk);
     }
 
     log::warn!("Received out-of-range error, retrying with streaming batches...");
 
-    execute_splittable_stream(
+    stream_range_batched(
         client,
         KvSplitter,
         (start_key.to_vec(), range_end.to_vec()),
@@ -121,13 +119,13 @@ where
     .await
 }
 
-pub async fn list_items_in_range_limited_with_client(
+pub async fn list_items(
     client: &mut Client,
     start_key: &[u8],
     range_end: &[u8],
     limit: i64,
     revision: Option<i64>,
-) -> Result<Vec<Item>, String> {
+) -> Result<Vec<KvEntry>, String> {
     let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
     client
         .get(
@@ -152,7 +150,7 @@ pub async fn list_items_in_range_limited_with_client(
         })
 }
 
-pub async fn stream_keys_in_range_with_client<F>(
+pub async fn stream_keys<F>(
     client: &mut Client,
     start_key: &[u8],
     range_end: &[u8],
@@ -182,7 +180,7 @@ where
 
     log::warn!("Received out-of-range error, retrying with streaming batches...");
 
-    execute_splittable_stream(
+    stream_range_batched(
         client,
         KeysOnlySplitter,
         (start_key.to_vec(), range_end.to_vec()),
@@ -196,7 +194,7 @@ where
     .await
 }
 
-pub async fn list_keys_in_range_limited_with_client(
+pub async fn list_keys(
     client: &mut Client,
     start_key: &[u8],
     range_end: &[u8],
@@ -229,11 +227,11 @@ pub async fn list_keys_in_range_limited_with_client(
         })
 }
 
-pub async fn get_values_for_keys_with_client(
+pub async fn get_values(
     client: &mut Client,
     keys: &[Vec<u8>],
     revision: Option<i64>,
-) -> Result<Vec<Item>, String> {
+) -> Result<Vec<KvEntry>, String> {
     let mut items = Vec::with_capacity(keys.len());
 
     for key in keys {
@@ -258,42 +256,6 @@ pub async fn get_values_for_keys_with_client(
     Ok(items)
 }
 
-/// Fetch all keys with the specified prefix
-#[allow(dead_code)]
-pub async fn list_items(prefix: &str, state: &mut AppState) -> Result<Vec<Item>, String> {
-    perform_op(state, |mut client| async move {
-        let range_end = range_end_of_prefix(prefix.as_bytes());
-        let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
-        let opt = GetOptions::new()
-            .with_serializable()
-            .with_range(range_end.clone())
-            .with_sort(sort_target, sort_order);
-        let res = client.get(prefix, Some(opt)).await;
-        if !split_batch::is_out_of_range_error(&res) {
-            return res.map(|mut response| {
-                response
-                    .take_kvs()
-                    .into_iter()
-                    .filter_map(item_from_kv)
-                    .collect()
-            });
-        }
-
-        log::warn!("Received out-of-range error, retrying...");
-
-        // Trait-based approach
-        execute_splittable(
-            &mut client,
-            KvSplitter,
-            (prefix, range_end),
-            (sort_target, sort_order),
-            None,
-        )
-        .await
-    })
-    .await
-}
-
 fn range_end_of_prefix(prefix_key: &[u8]) -> Vec<u8> {
     for (i, v) in prefix_key.iter().enumerate().rev() {
         if *v < 0xFF {
@@ -307,73 +269,7 @@ fn range_end_of_prefix(prefix_key: &[u8]) -> Vec<u8> {
     vec![0]
 }
 
-/// Fetch only keys with the specified prefix
-#[allow(dead_code)]
-pub async fn list_keys_only(prefix: &str, state: &mut AppState) -> Result<Vec<String>, String> {
-    perform_op(state, |mut client| async move {
-        let range_end = range_end_of_prefix(prefix.as_bytes());
-        let (sort_target, sort_order) = (SortTarget::Key, SortOrder::Ascend);
-        let opt = GetOptions::new()
-            .with_serializable()
-            .with_range(range_end.clone())
-            .with_keys_only()
-            .with_sort(sort_target, sort_order);
-        let res = client.get(prefix, Some(opt)).await;
-        if !is_out_of_range_error(&res) {
-            return res.map(|mut response| {
-                response
-                    .take_kvs()
-                    .iter()
-                    .filter_map(|kv| std::str::from_utf8(kv.key()).ok().map(str::to_owned))
-                    .collect()
-            });
-        }
-        log::warn!("Received out-of-range error, retrying...");
-
-        // Trait-based approach
-        execute_splittable(
-            &mut client,
-            KeysOnlySplitter,
-            (prefix, range_end),
-            (sort_target, sort_order),
-            None,
-        )
-        .await
-    })
-    .await
-}
-
-pub async fn stream_all_keys_in_range_with_client<F>(
-    client: &mut Client,
-    range: &KeyRange,
-    revision: i64,
-    mut on_chunk: F,
-) -> Result<(), String>
-where
-    F: FnMut(Vec<Vec<u8>>) -> Result<(), String>,
-{
-    stream_keys_in_range_with_client(client, &range.start, &range.end, Some(revision), |keys| {
-        on_chunk(keys)
-    })
-    .await
-}
-
-pub async fn stream_all_items_in_range_with_client<F>(
-    client: &mut Client,
-    range: &KeyRange,
-    revision: i64,
-    mut on_chunk: F,
-) -> Result<(), String>
-where
-    F: FnMut(Vec<Item>) -> Result<(), String>,
-{
-    stream_items_in_range_with_client(client, &range.start, &range.end, Some(revision), |items| {
-        on_chunk(items)
-    })
-    .await
-}
-
-fn apply_revision(options: GetOptions, revision: Option<i64>) -> GetOptions {
+pub(crate) fn apply_revision(options: GetOptions, revision: Option<i64>) -> GetOptions {
     if let Some(revision) = revision {
         options.with_revision(revision)
     } else {
@@ -420,7 +316,7 @@ pub async fn get_key_at_revision(
     key: &str,
     revision: i64,
     state: &mut AppState,
-) -> Result<Option<Item>, String> {
+) -> Result<Option<KvEntry>, String> {
     perform_op(state, |mut client| async move {
         client
             .get(key, Some(GetOptions::new().with_revision(revision)))

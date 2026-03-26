@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
-use crate::client::Item;
+use crate::client::KvEntry;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct SnapshotKey {
@@ -36,7 +36,7 @@ impl KeyRange {
 #[derive(Default)]
 pub struct SnapshotStore {
     key_index: Vec<Vec<u8>>,
-    values: HashMap<Vec<u8>, Item>,
+    values: HashMap<Vec<u8>, KvEntry>,
     covered_ranges: Vec<KeyRange>,
     exact_counts: HashMap<KeyRange, i64>,
 }
@@ -135,7 +135,7 @@ impl SnapshotStore {
 
     pub fn upsert_items<I>(&mut self, items: I)
     where
-        I: IntoIterator<Item = Item>,
+        I: IntoIterator<Item = KvEntry>,
     {
         for item in items {
             let key = item.key.as_bytes().to_vec();
@@ -170,7 +170,7 @@ impl SnapshotStore {
             .collect()
     }
 
-    pub fn cached_items_for_keys(&self, keys: &[Vec<u8>]) -> Vec<Item> {
+    pub fn cached_items_for_keys(&self, keys: &[Vec<u8>]) -> Vec<KvEntry> {
         keys.iter()
             .filter_map(|key| self.values.get(key).cloned())
             .collect()
@@ -183,7 +183,7 @@ impl SnapshotStore {
             .all(|key| self.values.contains_key(key))
     }
 
-    pub fn items_in_range(&self, range: &KeyRange) -> Vec<Item> {
+    pub fn items_in_range(&self, range: &KeyRange) -> Vec<KvEntry> {
         let (start, end) = self.range_bounds(range);
         self.key_index[start..end]
             .iter()
@@ -224,10 +224,10 @@ fn range_end_of_prefix(prefix_key: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::{KeyRange, SnapshotStore};
-    use crate::client::Item;
+    use crate::client::KvEntry;
 
-    fn item(key: &str, value: &str) -> Item {
-        Item {
+    fn item(key: &str, value: &str) -> KvEntry {
+        KvEntry {
             key: key.to_string(),
             value: value.to_string(),
             version: 1,

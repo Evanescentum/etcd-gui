@@ -1,5 +1,5 @@
 import { useState, useEffect, ChangeEvent } from "react";
-import { putEtcdItem } from "../../api/etcd";
+import { putKey } from "../../api/etcd";
 import { Button, CloseButton, Dialog, Field, Input, Textarea, VStack } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
 
@@ -24,7 +24,7 @@ function AddKeyDialog({
     const [dialogNewKey, setDialogNewKey] = useState(defaultKeyPrefix);
     const [dialogNewValue, setDialogNewValue] = useState("");
     const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
-        mutationFn: async ({ key, value }) => await putEtcdItem(key, value),
+        mutationFn: async ({ key, value }) => await putKey(key, value),
         onSuccess: async () => {
             await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
         },

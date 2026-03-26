@@ -369,7 +369,7 @@ async fn update_config(
 async fn test_connection(profile: config::Profile) -> Result<String, String> {
     log::info!("Testing connection for profile: {}", profile.name);
     // Try to connect using the profile
-    let mut client = client::new_connect(&profile).await?;
+    let mut client = client::connect(&profile).await?;
     client
         .status()
         .await
@@ -599,7 +599,7 @@ async fn get_key_at_revision(
     key: String,
     revision: i64,
     state: State<'_, Mutex<AppState>>,
-) -> Result<Option<client::Item>, String> {
+) -> Result<Option<client::KvEntry>, String> {
     log::debug!("Getting key {} at revision {}", key, revision);
     let mut state = state.lock().await;
     core::get_key_at_revision(&key, revision, &mut state)

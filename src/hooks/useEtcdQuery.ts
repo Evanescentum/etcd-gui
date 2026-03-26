@@ -19,7 +19,7 @@ export const etcdQueryKeys = {
     metrics: (profileName: string, endpoint: Endpoint | null) => ["metrics", profileName, endpoint?.host ?? null, endpoint?.port ?? null] as const,
 };
 
-export interface UseEtcdItemsQueryResult {
+export interface DashboardQueryResult {
     data: EtcdItem[];
     total: number | null;
     loadError: string | null;
@@ -43,7 +43,7 @@ interface DashboardViewState {
     loadingScope: "source" | "page" | null;
 }
 
-function createRunId(): string {
+function generateRequestId(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
@@ -61,7 +61,7 @@ function createEmptyDashboardView(requestId = "", sourceKey = ""): DashboardView
     };
 }
 
-function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize, refreshNonce, loadMode }: {
+export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize, refreshNonce, loadMode }: {
     enabled: boolean;
     keyPrefix: string;
     currentProfileName: string;
@@ -70,7 +70,7 @@ function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, search
     pageSize: number;
     refreshNonce: number;
     loadMode: DashboardQueryLoadMode;
-}): UseEtcdItemsQueryResult {
+}): DashboardQueryResult {
     const [view, setView] = useState<DashboardViewState>(() => createEmptyDashboardView());
     const [showDelayedPageRefresh, setShowDelayedPageRefresh] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
@@ -97,7 +97,7 @@ function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, search
             return;
         }
 
-        const requestId = createRunId();
+        const requestId = generateRequestId();
         const previousView = viewRef.current;
         const sameSource = previousView.sourceKey === sourceKey;
 
@@ -284,28 +284,6 @@ function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, search
             setReloadNonce((current) => current + 1);
         },
     };
-}
-
-export function useDashboardEtcdItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize, refreshNonce, loadMode }: {
-    enabled: boolean;
-    keyPrefix: string;
-    currentProfileName: string;
-    searchQuery: string;
-    currentPage: number;
-    pageSize: number;
-    refreshNonce: number;
-    loadMode: DashboardQueryLoadMode;
-}): UseEtcdItemsQueryResult {
-    return useDashboardItemsQuery({
-        enabled,
-        keyPrefix,
-        currentProfileName,
-        searchQuery,
-        currentPage,
-        pageSize,
-        refreshNonce,
-        loadMode,
-    });
 }
 
 export function useClusterInfoQuery({ currentProfileName, configLoading }: {

@@ -11,7 +11,7 @@ import { useColorModeValue } from "../../components/ui/color-mode";
 import { HiX } from "react-icons/hi"
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toaster } from "../ui/toaster";
-import { deleteEtcdItem } from "@/api/etcd";
+import { deleteKey } from "@/api/etcd";
 import { useActiveProfile } from "@/contexts/active-profile";
 import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
@@ -29,7 +29,7 @@ function DeleteKeyDialog({
     const queryClient = useQueryClient();
     const { activeProfile } = useActiveProfile();
     const { mutateAsync, isPending } = useMutation<void, String, { key: string }>({
-        mutationFn: async ({ key }) => await deleteEtcdItem(key),
+        mutationFn: async ({ key }) => await deleteKey(key),
         onSuccess: async () => {
             await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
         },

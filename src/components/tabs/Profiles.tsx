@@ -14,7 +14,7 @@ import { LuPlus, LuTrash2, LuServer, LuArrowRight, LuCheck, LuLock } from "react
 import { TbEdit } from "react-icons/tb";
 import { Tooltip } from "../../components/ui/tooltip";
 import { toaster } from "../../components/ui/toaster";
-import { initializeEtcdClient } from "../../api/etcd";
+import { initializeClient } from "../../api/etcd";
 import type { AppConfig, Profile } from "../../api/etcd";
 import ProfileEditDialog from "../dialogs/ProfileEditDialog";
 import { useDebounce } from "use-debounce";
@@ -54,7 +54,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
 
     // Reconnect to etcd with the new profile
     try {
-      await initializeEtcdClient();
+      await initializeClient();
 
       // Invalidate all queries related to the old profile
       queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvRoot });
@@ -124,7 +124,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
 
       await saveConfig(updatedConfig);
       if (current_profile !== config.current_profile) {
-        await initializeEtcdClient();
+        await initializeClient();
       }
 
       toaster.create({
@@ -175,7 +175,7 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       await saveConfig(newConfig);
 
       if (selectedProfile.originalName === config.current_profile) {
-        await initializeEtcdClient();
+        await initializeClient();
         // Manually invalidate all caches for the current profile
         queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvRoot });
         queryClient.invalidateQueries({ queryKey: ["cluster-info"] });

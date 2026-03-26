@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useDashboardEtcdItemsQuery } from "../../hooks/useEtcdQuery";
+import { useDashboardItemsQuery } from "../../hooks/useEtcdQuery";
 import {
   Box,
   ButtonGroup,
@@ -45,6 +45,30 @@ const pageSizeCollection = createListCollection({
   ]
 });
 
+function ConnectionStatus({ loadError, showTyping, isSourceLoading, isPageRefreshing, isTotalLoading, isStreaming }: {
+  loadError: string | null;
+  showTyping: boolean;
+  isSourceLoading: boolean;
+  isPageRefreshing: boolean;
+  isTotalLoading: boolean;
+  isStreaming: boolean;
+}) {
+  const [color, label] =
+    loadError ? ["red", "Connection Error"] :
+      showTyping ? ["blue", "Typing..."] :
+        isSourceLoading ? ["yellow", "Loading data..."] :
+          isPageRefreshing ? ["yellow", "Loading page..."] :
+            isTotalLoading ? ["yellow", "Scanning..."] :
+              isStreaming ? ["yellow", "Streaming..."] :
+                ["green", "Ready"];
+
+  return (
+    <Status.Root colorPalette={color}>
+      <Status.Indicator /> {label}
+    </Status.Root>
+  );
+}
+
 interface DashboardProps {
   configLoading: boolean;
 }
@@ -66,7 +90,7 @@ function Dashboard({ configLoading }: DashboardProps) {
 
   const kvLoadMethod = appConfig.kv_load_method;
 
-  const queryResult = useDashboardEtcdItemsQuery({
+  const queryResult = useDashboardItemsQuery({
     enabled: !configLoading,
     keyPrefix: committedKeyPrefix,
     currentProfileName: activeProfile.name,
@@ -363,34 +387,14 @@ function Dashboard({ configLoading }: DashboardProps) {
           <Badge colorPalette="blue">Search: "{searchQuery}"</Badge>
         )}
         <Spacer />
-        {loadError ?
-          <Status.Root colorPalette="red">
-            <Status.Indicator /> Connection Error
-          </Status.Root>
-          : showTyping ?
-            <Status.Root colorPalette="blue">
-              <Status.Indicator /> Typing...
-            </Status.Root>
-            : isSourceLoading ?
-              <Status.Root colorPalette="yellow">
-                <Status.Indicator /> Loading data...
-              </Status.Root>
-              : isPageRefreshing ?
-                <Status.Root colorPalette="yellow">
-                  <Status.Indicator /> Loading page...
-                </Status.Root>
-                : isTotalLoading ?
-                  <Status.Root colorPalette="yellow">
-                    <Status.Indicator /> Scanning...
-                  </Status.Root>
-                  : isStreaming ?
-                    <Status.Root colorPalette="yellow">
-                      <Status.Indicator /> Streaming...
-                    </Status.Root> :
-                    <Status.Root colorPalette="green">
-                      <Status.Indicator /> Ready
-                    </Status.Root>
-        }
+        <ConnectionStatus
+          loadError={loadError}
+          showTyping={showTyping}
+          isSourceLoading={isSourceLoading}
+          isPageRefreshing={isPageRefreshing}
+          isTotalLoading={isTotalLoading}
+          isStreaming={isStreaming}
+        />
       </HStack>
 
       {/* Add Key Dialog */}

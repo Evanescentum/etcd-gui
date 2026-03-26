@@ -27,7 +27,7 @@ impl AppState {
         })
     }
 
-    pub fn start_query_session(&mut self, request_id: String) -> Arc<AtomicBool> {
+    pub fn register_query(&mut self, request_id: String) -> Arc<AtomicBool> {
         let cancelled = Arc::new(AtomicBool::new(false));
 
         if let Some(existing) = self.query_sessions.insert(request_id, cancelled.clone()) {
@@ -37,7 +37,7 @@ impl AppState {
         cancelled
     }
 
-    pub fn cancel_query_session(&mut self, request_id: &str) -> bool {
+    pub fn cancel_query(&mut self, request_id: &str) -> bool {
         let Some(cancelled) = self.query_sessions.get(request_id) else {
             return false;
         };
@@ -46,7 +46,7 @@ impl AppState {
         true
     }
 
-    pub fn finish_query_session(&mut self, request_id: &str) {
+    pub fn unregister_query(&mut self, request_id: &str) {
         self.query_sessions.remove(request_id);
     }
 
@@ -87,7 +87,7 @@ impl AppState {
         let Some(current_profile) = self.app_config.get_current_profile() else {
             return Ok(false);
         };
-        self.etcd_client = Some(crate::client::new_connect(current_profile).await?);
+        self.etcd_client = Some(crate::client::connect(current_profile).await?);
 
         Ok(true)
     }

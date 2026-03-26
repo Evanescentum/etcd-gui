@@ -2,7 +2,7 @@ import { useState, useEffect, ChangeEvent } from "react";
 import { Button, CloseButton, Dialog, Field, Input, VStack, Box, Textarea, Text } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
-import { putEtcdItem } from "@/api/etcd";
+import { putKey } from "@/api/etcd";
 import { HiX } from "react-icons/hi";
 import { toaster } from "../ui/toaster";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
@@ -26,7 +26,7 @@ function EditKeyDialog({
     const [dialogValue, setDialogValue] = useState(valueToEdit);
     const [isKeyEditable, setIsKeyEditable] = useState(false);
     const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
-        mutationFn: async ({ key, value }) => await putEtcdItem(key, value),
+        mutationFn: async ({ key, value }) => await putKey(key, value),
         onSuccess: async () => {
             await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
         },
