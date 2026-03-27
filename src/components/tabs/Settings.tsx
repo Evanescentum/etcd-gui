@@ -18,7 +18,7 @@ import {
   createListCollection,
   ScrollArea,
 } from "@chakra-ui/react";
-import type { AppConfig, UpdateCheckSchedule } from "../../api/etcd";
+import type { AppConfig, UpdateChannel, UpdateCheckSchedule } from "../../api/etcd";
 import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug, LuZap, LuDatabase } from "react-icons/lu";
@@ -186,7 +186,7 @@ interface SettingsProps {
   config: AppConfig;
   saveConfig: (config: AppConfig) => Promise<void>;
   updateChecking: boolean;
-  onCheckUpdate: () => Promise<void>;
+  onCheckUpdate: (channel: UpdateChannel) => Promise<void>;
   onBeforeTabChange?: RefObject<((newTab: string) => Promise<boolean>) | null>;
   onConfigChange?: (config: AppConfig) => void;
   onDiscard?: () => void;
@@ -290,7 +290,7 @@ function Settings({
 
   const handleCheckUpdate = async () => {
     try {
-      await onCheckUpdate();
+      await onCheckUpdate(watch("update_channel"));
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       toaster.create({ title: "Failed to check for updates", description: msg, type: "error", closable: true });

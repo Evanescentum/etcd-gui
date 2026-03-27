@@ -6,11 +6,10 @@ import {
   Spinner
 } from "@chakra-ui/react";
 import { LuLayoutDashboard, LuUsers, LuSettings, LuNetwork, LuFileText, LuActivity } from "react-icons/lu";
-import { initializeClient, configFileExists, getConfig, listenUpdateCheckEvents, triggerUpdateCheck, updateConfig } from "./api/etcd";
-import type { AppConfig, Profile, UpdateCheckResult } from "./api/etcd";
+import { checkUpdate, initializeClient, configFileExists, getConfig, listenAutoUpdateCheckEvents, updateConfig } from "./api/etcd";
+import type { AppConfig, Profile, UpdateChannel, UpdateCheckResult } from "./api/etcd";
 import { Toaster, toaster } from "./components/ui/toaster";
 import { useTheme } from "next-themes";
-import { Provider } from "./components/ui/provider";
 import UpdateCheckDialog from "./components/dialogs/UpdateCheckDialog";
 import { ActiveProfileProvider } from "./contexts/active-profile";
 
@@ -48,10 +47,30 @@ const Onboarding = lazy(() => import("./components/tabs/Onboarding"));
 const Profiles = lazy(() => import("./components/tabs/Profiles"));
 const Settings = lazy(() => import("./components/tabs/Settings"));
 
-function App() {
-  // Color mode
+interface ThemeSyncProps {
+  appConfig: AppConfig | null;
+}
+
+function ThemeSync({ appConfig }: ThemeSyncProps) {
   const { setTheme } = useTheme();
 
+  useEffect(() => {
+    if (!appConfig) {
+      return;
+    }
+
+    if (appConfig.color_theme === "System") {
+      setTheme("system");
+      return;
+    }
+
+    setTheme(appConfig.color_theme.toLowerCase());
+  }, [appConfig, setTheme]);
+
+  return null;
+}
+
+function App() {
   // Add state for active tab
   const [activeTab, setActiveTab] = useState("dashboard");
 
@@ -80,20 +99,11 @@ function App() {
   };
 
   const guardedState = useMemo(() => resolveAppGuardState(appConfig), [appConfig]);
-  if (guardedState.kind === "profile-required" && activeTab !== "profiles") {
-    setActiveTab("profiles");
-  }
-
-  // Setup theme sync
   useEffect(() => {
-    if (!appConfig) return;
-
-    if (appConfig.color_theme === "System") {
-      setTheme("system");
-    } else {
-      setTheme(appConfig.color_theme.toLowerCase());
+    if (guardedState.kind === "profile-required" && activeTab !== "profiles") {
+      setActiveTab("profiles");
     }
-  }, [appConfig?.color_theme, setTheme]);
+  }, [activeTab, guardedState.kind]);
 
   // Update config function that can be used by components
   const saveConfig = async (newConfig: AppConfig) => {
@@ -158,11 +168,7 @@ function App() {
     let isDisposed = false;
     let unlisten: (() => void) | null = null;
 
-    void listenUpdateCheckEvents((payload) => {
-      if (payload.trigger === "manual") {
-        setUpdateChecking(false);
-      }
-
+    void listenAutoUpdateCheckEvents((payload) => {
       if (payload.error) {
         toaster.create({
           title: "Failed to check for updates",
@@ -177,7 +183,7 @@ function App() {
         return;
       }
 
-      if (payload.result.update_available || payload.trigger === "manual") {
+      if (payload.result.update_available) {
         setUpdateResult(payload.result);
       }
     })
@@ -205,7 +211,7 @@ function App() {
     };
   }, []);
 
-  const handleManualCheckUpdate = useCallback(async () => {
+  const handleManualCheckUpdate = useCallback(async (channel: UpdateChannel) => {
     if (updateChecking) {
       return;
     }
@@ -213,16 +219,18 @@ function App() {
     setUpdateChecking(true);
 
     try {
-      await triggerUpdateCheck();
+      const result = await checkUpdate(channel);
+      setUpdateResult(result);
     } catch (error) {
-      setUpdateChecking(false);
       const msg = error instanceof Error ? error.message : String(error);
       toaster.create({
-        title: "Failed to trigger update check",
+        title: "Failed to check for updates",
         description: msg,
         type: "error",
         closable: true,
       });
+    } finally {
+      setUpdateChecking(false);
     }
   }, [updateChecking]);
 
@@ -299,6 +307,7 @@ function App() {
   if (guardedState.kind === "onboarding") {
     return (
       <>
+        <ThemeSync appConfig={appConfig} />
         <Onboarding onComplete={handleOnboardingComplete} />
         <Toaster />
       </>
@@ -428,10 +437,8 @@ function App() {
   );
 
   return (
-    <Provider
-      fontFamilyBody={guardedState.appConfig.font_family_body}
-      fontFamilyMono={guardedState.appConfig.font_family_mono}
-    >
+    <>
+      <ThemeSync appConfig={guardedState.appConfig} />
       {guardedState.kind === "ready" ? (
         <ActiveProfileProvider
           appConfig={guardedState.appConfig}
@@ -459,7 +466,7 @@ function App() {
       )}
 
       <Toaster />
-    </Provider>
+    </>
   );
 }
 

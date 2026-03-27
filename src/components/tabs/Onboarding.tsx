@@ -3,25 +3,25 @@ import {
   Box,
   Button,
   Container,
-  Flex,
   Heading,
   Text,
   VStack,
-  Input,
-  Field,
-  IconButton,
-  Switch,
+  Flex,
   Separator,
   Steps,
   useSteps,
 } from "@chakra-ui/react";
-import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
-import { LuPlus, LuTrash2, LuArrowRight, LuChevronLeft, LuChevronsRight, LuRefreshCw, LuCheck, LuCircleAlert } from "react-icons/lu";
+import { LuArrowRight, LuChevronLeft, LuChevronsRight, LuRefreshCw, LuCheck, LuCircleAlert } from "react-icons/lu";
 import { getDefaultConfig, updateConfig, testConnection } from "../../api/etcd";
-import type { AppConfig, Profile } from "../../api/etcd";
+import type { AppConfig } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { Tooltip } from "../../components/ui/tooltip";
+import {
+  ProfileAdvancedFields,
+  ProfileConnectionFields,
+  useProfileFormState,
+} from "../ProfileFormFields";
 
 interface OnboardingProps {
   onComplete: () => void;
@@ -38,19 +38,12 @@ function Onboarding({ onComplete }: OnboardingProps) {
   // Error message state for connection test
   const [connectionError, setConnectionError] = useState<string>("");
 
-  // Create a default profile template
-  const [profile, setProfile] = useState<Profile>({
+  const profileForm = useProfileFormState({
     name: "Default",
     endpoints: [{ host: "http://localhost", port: 2379 }],
     timeout_ms: 5000,
     connect_timeout_ms: 3000,
     metrics_path: "/metrics",
-  });
-  const [useAuth, setUseAuth] = useState(false);
-  const [validationErrors, setValidationErrors] = useState({
-    port: '',
-    timeout: '',
-    connectTimeout: ''
   });
 
   // Timer reference to reset test result states
@@ -65,57 +58,8 @@ function Onboarding({ onComplete }: OnboardingProps) {
     };
   }, []);
 
-  const validatePort = (port: number): string => {
-    if (port < 1 || port > 65535) {
-      return 'Port must be between 1 and 65535';
-    }
-    return '';
-  };
-
-  const validateTimeout = (timeout: number | undefined): string => {
-    if (timeout !== undefined && timeout < 100) {
-      return 'Timeout should be at least 100ms';
-    }
-    if (timeout !== undefined && timeout > 60000) {
-      return 'Timeout should not exceed 60000ms (60 seconds)';
-    }
-    return '';
-  };
-
-  const removeEndpoint = (index: number) => {
-    if (profile.endpoints.length <= 1) return;
-
-    const newEndpoints = [...profile.endpoints];
-    newEndpoints.splice(index, 1);
-
-    setProfile({
-      ...profile,
-      endpoints: newEndpoints
-    });
-  };
-
-  const updateEndpoint = (index: number, field: 'host' | 'port', value: string | number) => {
-    const newEndpoints = [...profile.endpoints];
-
-    if (field === 'port') {
-      const portValue = typeof value === 'string' ? parseInt(value, 10) : value;
-      const error = validatePort(portValue);
-      setValidationErrors(prev => ({ ...prev, port: error }));
-    }
-
-    newEndpoints[index] = {
-      ...newEndpoints[index],
-      [field]: value
-    };
-
-    setProfile({
-      ...profile,
-      endpoints: newEndpoints
-    });
-  };
-
   const handleTestConnection = async () => {
-    if (profile.endpoints.length === 0) return;
+    if (profileForm.profile.endpoints.length === 0) return;
 
     // Clear previous test results and timer
     setConnectionTestResult(null);
@@ -128,10 +72,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
     setTestingConnection(true);
 
     // Prepare profile with auth if enabled
-    const profileToTest = {
-      ...profile,
-      user: useAuth ? profile.user : undefined
-    };
+    const profileToTest = profileForm.buildProfile();
 
     try {
       const version = await testConnection(profileToTest);
@@ -165,15 +106,9 @@ function Onboarding({ onComplete }: OnboardingProps) {
     try {
       const config: AppConfig = await getDefaultConfig();
 
+      const profile = profileForm.buildProfile();
       config.profiles = [profile];
       config.current_profile = profile.name;
-
-      // Handle auth
-      if (useAuth) {
-        config.profiles[0].user = [profile.user?.[0] || '', profile.user?.[1] || ''];
-      } else {
-        delete config.profiles[0].user;
-      }
 
       // Save config
       await updateConfig(config);
@@ -225,191 +160,15 @@ function Onboarding({ onComplete }: OnboardingProps) {
 
             {/* Step 1: Basic Configuration with Authentication */}
             <Steps.Content index={0}>
-              <VStack gap={6} align="start">
-                <Field.Root>
-                  <Field.Label>Profile Name</Field.Label>
-                  <Input
-                    {...codeInputProps}
-                    value={profile.name}
-                    onChange={(e) => setProfile({ ...profile, name: e.target.value })}
-                    placeholder="Enter profile name"
-                  />
-                  <Field.HelperText>
-                    Choose a name to identify this connection profile
-                  </Field.HelperText>
-                </Field.Root>
-
-                <Box width="100%">
-                  <Text fontWeight="medium" mb={2}>Connection Endpoints</Text>
-                  <VStack gap={3} align="stretch" mb={3}>
-                    {profile.endpoints.map((endpoint, index) => (
-                      <Flex key={index} gap={2}>
-                        <Input
-                          {...codeInputProps}
-                          flex={3}
-                          value={endpoint.host}
-                          onChange={(e) => updateEndpoint(index, 'host', e.target.value)}
-                          placeholder="Host (e.g. http://localhost)"
-                        />
-                        <Field.Root invalid={!!validationErrors.port} flex={1}>
-                          <Input
-                            {...codeInputProps}
-                            value={endpoint.port}
-                            onChange={(e) => {
-                              const value = parseInt(e.target.value, 10);
-                              if (!isNaN(value)) {
-                                updateEndpoint(index, 'port', value);
-                              }
-                            }}
-                            placeholder="Port"
-                          />
-                          {validationErrors.port && (
-                            <Field.ErrorText>{validationErrors.port}</Field.ErrorText>
-                          )}
-                        </Field.Root>
-
-                        <IconButton
-                          aria-label="Remove endpoint"
-                          children={<LuTrash2 />}
-                          colorPalette="red"
-                          variant="ghost"
-                          onClick={() => removeEndpoint(index)}
-                          disabled={profile.endpoints.length <= 1}
-                        />
-                      </Flex>
-                    ))}
-                  </VStack>
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      setProfile({
-                        ...profile,
-                        endpoints: [
-                          ...profile.endpoints,
-                          { host: "http://localhost", port: 2379 }
-                        ]
-                      });
-                    }}
-                    mt={2}
-                  >
-                    <Box mr={2}><LuPlus /></Box>
-                    Add Endpoint
-                  </Button>
-                </Box>
-                <Box width="100%" pt={2}>
-                  <Flex align="center" justify="space-between" width="100%">
-                    <Text fontWeight="medium">Authentication</Text>
-                    <Switch.Root
-                      checked={useAuth}
-                      onCheckedChange={(e) => setUseAuth(e.checked)}
-                    >
-                      <Switch.HiddenInput />
-                      <Switch.Control />
-                      <Switch.Label ml={2}>{useAuth ? 'Enabled' : 'Disabled'}</Switch.Label>
-                    </Switch.Root>
-                  </Flex>
-
-                  {useAuth && (
-                    <VStack gap={4} align="stretch" width="100%" mt={3}>
-                      <Field.Root>
-                        <Field.Label>Username</Field.Label>
-                        <Input
-                          {...codeInputProps}
-                          value={profile.user?.[0] || ""}
-                          onChange={(e) => setProfile({
-                            ...profile,
-                            user: [e.target.value, profile.user?.[1] || ""]
-                          })}
-                          placeholder="Username"
-                        />
-                      </Field.Root>
-                      <Field.Root>
-                        <Field.Label>Password</Field.Label>
-                        <Input
-                          {...codeInputProps}
-                          type="password"
-                          value={profile.user?.[1] || ""}
-                          onChange={(e) => setProfile({
-                            ...profile,
-                            user: [profile.user?.[0] || "", e.target.value]
-                          })}
-                          placeholder="Password"
-                        />
-                      </Field.Root>
-                    </VStack>
-                  )}
-                </Box>
-              </VStack>
+              <ProfileConnectionFields
+                state={profileForm}
+                showProfileNameHelperText
+              />
             </Steps.Content>
 
             {/* Step 2: Advanced Configuration (Timeouts only) */}
             <Steps.Content index={1}>
-              <VStack gap={6} align="start">
-                <Field.Root invalid={!!validationErrors.timeout}>
-                  <Field.Label>Timeout (ms)</Field.Label>
-                  <Input
-                    {...codeInputProps}
-                    value={profile.timeout_ms === undefined ? '' : profile.timeout_ms}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
-                      if (value === undefined || !isNaN(value)) {
-                        const error = validateTimeout(value);
-                        setValidationErrors(prev => ({ ...prev, timeout: error }));
-                        setProfile({ ...profile, timeout_ms: value });
-                      }
-                    }}
-                    placeholder="Timeout in milliseconds"
-                  />
-                  <Field.HelperText>
-                    Request timeout in milliseconds (default: 5000)
-                  </Field.HelperText>
-                  {validationErrors.timeout && (
-                    <Field.ErrorText>{validationErrors.timeout}</Field.ErrorText>
-                  )}
-                </Field.Root>
-
-                <Field.Root invalid={!!validationErrors.connectTimeout}>
-                  <Field.Label>Connection Timeout (ms)</Field.Label>
-                  <Input
-                    {...codeInputProps}
-                    value={profile.connect_timeout_ms === undefined ? '' : profile.connect_timeout_ms}
-                    onChange={(e) => {
-                      const value = e.target.value === "" ? undefined : parseInt(e.target.value, 10);
-                      if (value === undefined || !isNaN(value)) {
-                        const error = validateTimeout(value);
-                        setValidationErrors(prev => ({ ...prev, connectTimeout: error }));
-                        setProfile({ ...profile, connect_timeout_ms: value });
-                      }
-                    }}
-                    placeholder="Connection timeout in milliseconds"
-                  />
-                  <Field.HelperText>
-                    Connection timeout in milliseconds (default: 3000)
-                  </Field.HelperText>
-                  {validationErrors.connectTimeout && (
-                    <Field.ErrorText>{validationErrors.connectTimeout}</Field.ErrorText>
-                  )}
-                </Field.Root>
-
-                <Field.Root>
-                  <Field.Label>Metrics Path</Field.Label>
-                  <Input
-                    {...codeInputProps}
-                    value={profile.metrics_path === undefined ? '' : profile.metrics_path}
-                    onChange={(e) => {
-                      let val = e.target.value;
-                      if (val !== "" && !val.startsWith('/')) {
-                        val = '/' + val;
-                      }
-                      setProfile({ ...profile, metrics_path: val });
-                    }}
-                    placeholder="/metrics"
-                  />
-                  <Field.HelperText>
-                    Path to fetch Prometheus format metrics from (default: /metrics)
-                  </Field.HelperText>
-                </Field.Root>
-              </VStack>
+              <ProfileAdvancedFields state={profileForm} showHelperText />
             </Steps.Content>
 
             <Separator mt={8} mb={6} />
@@ -437,7 +196,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                   onClick={handleTestConnection}
                   loading={testingConnection}
                   loadingText="Testing"
-                  disabled={profile.endpoints.length === 0 || !!validationErrors.port}
+                  disabled={profileForm.profile.endpoints.length === 0 || profileForm.hasValidationErrors}
                 >
                   <Box mr={2}>
                     {(() => {
@@ -468,6 +227,7 @@ function Onboarding({ onComplete }: OnboardingProps) {
                   colorPalette="blue"
                   onClick={handleFinish}
                   loadingText="Setting Up"
+                  disabled={!profileForm.profile.name.trim() || profileForm.profile.endpoints.length === 0 || profileForm.hasValidationErrors}
                 >
                   Finish Setup
                   <Box ml={2}><LuChevronsRight /></Box>

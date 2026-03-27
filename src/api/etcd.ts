@@ -16,25 +16,20 @@ export interface EtcdItem {
 export type DashboardQueryLoadMode = "Lazy" | "Full";
 
 export interface DashboardQueryRequest {
-    requestId: string;
     prefix: string;
     search: string;
     currentPage: number;
     pageSize: number;
     loadMode: DashboardQueryLoadMode;
     revision: number | null;
-    preservePaginationState: boolean;
 }
 
 export type DashboardQueryEvent =
     | {
         event: 'started';
         data: {
-            requestId: string;
-            mode: DashboardQueryLoadMode;
             resolvedRevision: number;
             total: number | null;
-            preservePaginationState: boolean;
         };
     }
     | {
@@ -60,10 +55,6 @@ export type DashboardQueryEvent =
         };
     }
     | {
-        event: 'cancelled';
-        data: null;
-    }
-    | {
         event: 'error';
         data: {
             message: string;
@@ -75,7 +66,6 @@ interface DashboardQueryHandlers {
     onPageChunk?: (event: Extract<DashboardQueryEvent, { event: 'pageChunk' }>) => void;
     onProgress?: (event: Extract<DashboardQueryEvent, { event: 'progress' }>) => void;
     onCompleted?: (event: Extract<DashboardQueryEvent, { event: 'completed' }>) => void;
-    onCancelled?: () => void;
     onError?: (event: Extract<DashboardQueryEvent, { event: 'error' }>) => void;
 }
 
@@ -114,10 +104,7 @@ export interface UpdateCheckResult {
     release: ReleaseInfo;
 }
 
-export type UpdateCheckTrigger = "automatic" | "manual";
-
-export interface UpdateCheckEvent {
-    trigger: UpdateCheckTrigger;
+export interface AutoUpdateCheckEvent {
     result?: UpdateCheckResult;
     error?: string;
 }
@@ -136,19 +123,10 @@ export async function checkUpdate(channel: UpdateChannel): Promise<UpdateCheckRe
     }
 }
 
-export async function triggerUpdateCheck(): Promise<void> {
-    try {
-        await invoke<void>('trigger_update_check');
-    } catch (error) {
-        console.error('Error triggering update check:', error);
-        throw error;
-    }
-}
-
-export async function listenUpdateCheckEvents(
-    handler: (payload: UpdateCheckEvent) => void,
+export async function listenAutoUpdateCheckEvents(
+    handler: (payload: AutoUpdateCheckEvent) => void,
 ): Promise<() => void> {
-    return listen<UpdateCheckEvent>('update-check', (event) => {
+    return listen<AutoUpdateCheckEvent>('update-check', (event) => {
         handler(event.payload);
     });
 }
@@ -193,6 +171,8 @@ export async function streamDashboardQuery(
     handlers: DashboardQueryHandlers,
 ): Promise<void> {
     const onEvent = new Channel<DashboardQueryEvent>();
+    let resolveCompletion!: () => void;
+    let rejectCompletion!: (error: unknown) => void;
 
     const completion = new Promise<void>((resolve, reject) => {
         let settled = false;
@@ -210,6 +190,9 @@ export async function streamDashboardQuery(
                 reject(error);
             }
         };
+
+        resolveCompletion = resolveOnce;
+        rejectCompletion = rejectOnce;
 
         onEvent.onmessage = (message) => {
             if (message.event === 'started') {
@@ -233,12 +216,6 @@ export async function streamDashboardQuery(
                 return;
             }
 
-            if (message.event === 'cancelled') {
-                handlers.onCancelled?.();
-                resolveOnce();
-                return;
-            }
-
             handlers.onError?.(message);
             rejectOnce(new Error(message.data.message));
         };
@@ -246,20 +223,16 @@ export async function streamDashboardQuery(
 
     try {
         await Promise.all([
-            invoke<void>('start_dashboard_query', { query, onEvent }),
+            invoke<void>('start_dashboard_query', { query, onEvent }).then(() => {
+                resolveCompletion();
+            }).catch((error) => {
+                rejectCompletion(error);
+                throw error;
+            }),
             completion,
         ]);
     } catch (error) {
         console.error('Error streaming dashboard query:', error);
-        throw error;
-    }
-}
-
-export async function cancelDashboardQuery(requestId: string): Promise<void> {
-    try {
-        await invoke<void>('cancel_dashboard_query', { requestId });
-    } catch (error) {
-        console.error('Error cancelling dashboard query:', error);
         throw error;
     }
 }
@@ -525,23 +498,6 @@ export async function getKeyAtRevision(key: string, revision: number): Promise<E
         return await invoke<EtcdItem | null>('get_key_at_revision', { key, revision });
     } catch (error) {
         console.error('Error getting key at revision:', error);
-        throw error;
-    }
-}
-
-/**
- * Format a Unix timestamp (in milliseconds) to ISO 8601 strings
- * Returns both UTC and local time representations
- * Uses Rust backend for reliable formatting with chrono library
- * @param timestamp Unix timestamp in milliseconds
- */
-export async function formatTimestamp(timestamp: number): Promise<{ utc: string; local: string }> {
-    try {
-        return await invoke<{ utc: string; local: string }>('format_timestamp', {
-            timestampMs: timestamp,
-        });
-    } catch (error) {
-        console.error('Error formatting timestamp:', error);
         throw error;
     }
 }

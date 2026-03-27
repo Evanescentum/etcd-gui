@@ -48,17 +48,6 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
     }, [item]);
 
     useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onClose]);
-
-    useEffect(() => {
         if (!copiedTarget) {
             return;
         }
@@ -196,8 +185,8 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
     }), [detected.language]);
 
     return (
-        <Dialog.Root open size="xl">
-            <Dialog.Backdrop onClick={onClose} />
+        <Dialog.Root open size="xl" onOpenChange={(details) => { if (!details.open) onClose(); }}>
+            <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content bg="transparent" shadow="none" maxW="max-content">
                     <Flex align="start" gap={4} justify="center">

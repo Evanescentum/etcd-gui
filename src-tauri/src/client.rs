@@ -1,18 +1,6 @@
 use etcd_client::{Client, ConnectOptions};
-use serde::{Deserialize, Serialize};
 
 use crate::config::Profile;
-
-/// Represents a key-value pair from etcd
-#[derive(Serialize, Deserialize, Debug, Clone)]
-pub struct KvEntry {
-    pub key: String,
-    pub value: String,
-    pub version: i64,
-    pub create_revision: i64,
-    pub mod_revision: i64,
-    pub lease: i64,
-}
 
 pub async fn connect(profile: &Profile) -> Result<etcd_client::Client, String> {
     log::info!("Connecting to etcd with profile: {}", profile.name);

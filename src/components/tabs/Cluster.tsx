@@ -37,6 +37,15 @@ interface ClusterProps {
     configLoading: boolean;
 }
 
+const interactiveStatCardProps = {
+    transition: "all 0.2s",
+    _hover: {
+        transform: "translateY(-2px)",
+        shadow: "lg",
+        transition: "all 0.2s",
+    },
+} as const;
+
 function Cluster({ configLoading }: ClusterProps) {
     const { activeProfile } = useActiveProfile();
 
@@ -156,12 +165,7 @@ function Cluster({ configLoading }: ClusterProps) {
                             <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} gap={5}>
                                 <Card.Root
                                     variant="elevated"
-                                    _hover={{
-                                        transform: "translateY(-2px)",
-                                        shadow: "lg",
-                                        transition: "all 0.2s"
-                                    }}
-                                    transition="all 0.2s"
+                                    {...interactiveStatCardProps}
                                 >
                                     <Card.Body>
                                         <Stat.Root colorPalette="blue" size="lg">
@@ -212,12 +216,7 @@ function Cluster({ configLoading }: ClusterProps) {
 
                                 <Card.Root
                                     variant="elevated"
-                                    _hover={{
-                                        transform: "translateY(-2px)",
-                                        shadow: "lg",
-                                        transition: "all 0.2s"
-                                    }}
-                                    transition="all 0.2s"
+                                    {...interactiveStatCardProps}
                                 >
                                     <Card.Body>
                                         <Stat.Root colorPalette="green" size="lg">
@@ -246,12 +245,7 @@ function Cluster({ configLoading }: ClusterProps) {
 
                                 <Card.Root
                                     variant="elevated"
-                                    _hover={{
-                                        transform: "translateY(-2px)",
-                                        shadow: "lg",
-                                        transition: "all 0.2s"
-                                    }}
-                                    transition="all 0.2s"
+                                    {...interactiveStatCardProps}
                                 >
                                     <Card.Body>
                                         <Stat.Root colorPalette="purple" size="lg">
@@ -283,12 +277,7 @@ function Cluster({ configLoading }: ClusterProps) {
 
                                 <Card.Root
                                     variant="elevated"
-                                    _hover={{
-                                        transform: "translateY(-2px)",
-                                        shadow: "lg",
-                                        transition: "all 0.2s"
-                                    }}
-                                    transition="all 0.2s"
+                                    {...interactiveStatCardProps}
                                 >
                                     <Card.Body>
                                         <Stat.Root colorPalette="orange" size="lg">

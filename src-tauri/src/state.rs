@@ -1,19 +1,17 @@
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use etcd_client::{Client, Error};
 
-use parking_lot::RwLock;
-
+use crate::client::is_auth_token_expired;
 use crate::config;
-use crate::snapshot::{SharedSnapshot, SnapshotKey, SnapshotStore};
+use crate::query_manager::QueryManager;
 
+/// Shared Tauri application state.
 #[derive(Default)]
 pub struct AppState {
     pub app_config: config::AppConfig,
 
     pub etcd_client: Option<etcd_client::Client>,
-    query_sessions: HashMap<String, Arc<AtomicBool>>,
-    snapshots: HashMap<SnapshotKey, SharedSnapshot>,
+    /// Owns dashboard query sessions and revision-scoped snapshot caches.
+    pub query_manager: QueryManager,
 }
 
 impl AppState {
@@ -24,58 +22,8 @@ impl AppState {
         Ok(AppState {
             app_config,
             etcd_client: None,
-            query_sessions: HashMap::new(),
-            snapshots: HashMap::new(),
+            query_manager: QueryManager::default(),
         })
-    }
-
-    pub fn register_query(&mut self, request_id: String) -> Arc<AtomicBool> {
-        let cancelled = Arc::new(AtomicBool::new(false));
-
-        if let Some(existing) = self.query_sessions.insert(request_id, cancelled.clone()) {
-            existing.store(true, Ordering::Relaxed);
-        }
-
-        cancelled
-    }
-
-    pub fn cancel_query(&mut self, request_id: &str) -> bool {
-        let Some(cancelled) = self.query_sessions.get(request_id) else {
-            return false;
-        };
-
-        cancelled.store(true, Ordering::Relaxed);
-        true
-    }
-
-    pub fn unregister_query(&mut self, request_id: &str) {
-        self.query_sessions.remove(request_id);
-    }
-
-    pub fn current_profile_fingerprint(&self) -> Result<String, String> {
-        let profile = self
-            .app_config
-            .get_current_profile()
-            .ok_or_else(|| "Could not find current profile".to_string())?;
-        profile.fingerprint()
-    }
-
-    pub fn get_or_create_snapshot(&mut self, snapshot_key: SnapshotKey) -> SharedSnapshot {
-        self.snapshots
-            .entry(snapshot_key)
-            .or_insert_with(|| Arc::new(RwLock::new(SnapshotStore::default())))
-            .clone()
-    }
-
-    pub fn invalidate_current_profile_snapshots(&mut self) -> Result<(), String> {
-        let fingerprint = self.current_profile_fingerprint()?;
-        self.snapshots
-            .retain(|key, _| key.profile_fingerprint != fingerprint);
-        Ok(())
-    }
-
-    pub fn clear_snapshots(&mut self) {
-        self.snapshots.clear();
     }
 
     pub async fn init_client(&mut self) -> Result<bool, String> {
@@ -91,15 +39,35 @@ impl AppState {
         Ok(true)
     }
 
-    pub async fn get_client(&mut self) -> Result<&mut etcd_client::Client, String> {
+    pub async fn get_client(&mut self) -> Result<etcd_client::Client, String> {
         match self.init_client().await {
             Ok(true) => (),
             Ok(false) => return Err("Could not find current profile".to_string()),
             Err(e) => return Err(e),
         }
 
-        self.etcd_client
-            .as_mut()
-            .ok_or_else(|| "Client should be initialized after successful init_client".to_string())
+        Ok(self
+            .etcd_client
+            .as_ref()
+            .expect("Client should be initialized after successful init_client")
+            .clone())
+    }
+
+    pub async fn perform_op<T, F>(&mut self, mut f: F) -> Result<T, String>
+    where
+        // HACK:for now async fn traits dosn't support constraints on the output type, so we have to use a workaround
+        // see: https://users.rust-lang.org/t/implementation-of-send-is-not-general-enough-for-asyncfnmut/126215/2
+        F: async_fn_traits::AsyncFnMut1<Client, Output = Result<T, Error>>,
+    {
+        let client = self.get_client().await?;
+        let res = f(client).await;
+
+        if !is_auth_token_expired(&res) {
+            return res.map_err(|e| e.to_string());
+        }
+        log::warn!("Refreshing client connection...");
+        self.etcd_client = None;
+        let client = self.get_client().await?;
+        f(client).await.map_err(|e| e.to_string())
     }
 }

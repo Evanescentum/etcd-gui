@@ -2,7 +2,6 @@ import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     EtcdItem,
-    cancelDashboardQuery,
     type DashboardQueryLoadMode,
     getClusterInfo,
     type ClusterInfo,
@@ -13,8 +12,6 @@ import {
 } from "../api/etcd";
 
 export const etcdQueryKeys = {
-    kvRoot: ["etcd-kv"] as const,
-    kvProfile: (profileName: string) => [...etcdQueryKeys.kvRoot, profileName] as const,
     clusterInfo: (profileName: string) => ["cluster-info", profileName] as const,
     metrics: (profileName: string, endpoint: Endpoint | null) => ["metrics", profileName, endpoint?.host ?? null, endpoint?.port ?? null] as const,
 };
@@ -28,11 +25,13 @@ export interface DashboardQueryResult {
     isPageRefreshing: boolean;
     isStreaming: boolean;
     isTotalLoading: boolean;
+    /**
+     * Drops the pinned revision for the current source and reloads from the latest revision.
+     */
     refetch: () => Promise<void>;
 }
 
 interface DashboardViewState {
-    requestId: string;
     sourceKey: string;
     items: EtcdItem[];
     total: number | null;
@@ -47,9 +46,8 @@ function generateRequestId(): string {
     return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
-function createEmptyDashboardView(requestId = "", sourceKey = ""): DashboardViewState {
+function createEmptyDashboardView(sourceKey = ""): DashboardViewState {
     return {
-        requestId,
         sourceKey,
         items: [],
         total: null,
@@ -61,6 +59,12 @@ function createEmptyDashboardView(requestId = "", sourceKey = ""): DashboardView
     };
 }
 
+/**
+ * Streams dashboard items while pinning each source view to a resolved backend revision.
+ *
+ * Call `refetch` after a write to discard that revision pin and refresh against the
+ * newest revision instead of asking the backend to invalidate historical snapshots.
+ */
 export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName, searchQuery, currentPage, pageSize, refreshNonce, loadMode }: {
     enabled: boolean;
     keyPrefix: string;
@@ -75,7 +79,9 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
     const [showDelayedPageRefresh, setShowDelayedPageRefresh] = useState(false);
     const [isFetching, setIsFetching] = useState(false);
     const [reloadNonce, setReloadNonce] = useState(0);
+    const [pageRefreshRequestNonce, setPageRefreshRequestNonce] = useState(0);
     const activeRequestIdRef = useRef("");
+    // The dashboard stays on a resolved revision until the caller explicitly asks for latest data.
     const pinnedRevisionsRef = useRef<Record<string, number>>({});
     const viewRef = useRef(view);
     const sourceKey = useMemo(
@@ -102,9 +108,10 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
         const sameSource = previousView.sourceKey === sourceKey;
 
         activeRequestIdRef.current = requestId;
+        setPageRefreshRequestNonce((current) => current + 1);
         setIsFetching(true);
         setView({
-            ...createEmptyDashboardView(requestId, sourceKey),
+            ...createEmptyDashboardView(sourceKey),
             items: sameSource ? previousView.items : [],
             total: sameSource ? previousView.total : null,
             hasExactTotal: sameSource ? previousView.hasExactTotal : false,
@@ -113,14 +120,12 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
         });
 
         void streamDashboardQuery({
-            requestId,
             prefix: keyPrefix,
             search: searchQuery,
             currentPage,
             pageSize,
             loadMode,
             revision: pinnedRevisionsRef.current[revisionSourceKey] ?? null,
-            preservePaginationState: sameSource,
         }, {
             onStarted: ({ data }) => {
                 if (activeRequestIdRef.current !== requestId) {
@@ -131,10 +136,9 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
 
                 setView((current) => ({
                     ...current,
-                    requestId,
                     sourceKey,
-                    total: data.preservePaginationState && data.total === null ? current.total : data.total,
-                    hasExactTotal: data.preservePaginationState && data.total === null ? current.hasExactTotal : data.total !== null,
+                    total: sameSource && data.total === null ? current.total : data.total,
+                    hasExactTotal: sameSource && data.total === null ? current.hasExactTotal : data.total !== null,
                     loadError: null,
                 }));
             },
@@ -145,7 +149,6 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
 
                 setView((current) => ({
                     ...current,
-                    requestId,
                     sourceKey,
                     items: data.items,
                     pageReady: true,
@@ -160,7 +163,6 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
 
                 setView((current) => ({
                     ...current,
-                    requestId,
                     sourceKey,
                     total: data.total,
                     hasExactTotal: true,
@@ -173,23 +175,10 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
 
                 setView((current) => ({
                     ...current,
-                    requestId,
                     sourceKey,
                     total: data.total,
                     hasExactTotal: true,
                     pageReady: true,
-                    isComplete: true,
-                    loadingScope: null,
-                }));
-            },
-            onCancelled: () => {
-                if (activeRequestIdRef.current !== requestId) {
-                    return;
-                }
-
-                setView((current) => ({
-                    ...current,
-                    requestId,
                     isComplete: true,
                     loadingScope: null,
                 }));
@@ -201,7 +190,6 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
 
                 setView((current) => ({
                     ...current,
-                    requestId,
                     sourceKey,
                     loadError: data.message,
                     isComplete: true,
@@ -217,7 +205,6 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
                 const message = error instanceof Error ? error.message : String(error);
                 setView((current) => ({
                     ...current,
-                    requestId,
                     sourceKey,
                     loadError: message,
                     isComplete: true,
@@ -229,12 +216,6 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
                     setIsFetching(false);
                 }
             });
-
-        return () => {
-            void cancelDashboardQuery(requestId).catch((error) => {
-                console.error("Failed to cancel dashboard query:", error);
-            });
-        };
     }, [
         currentPage,
         currentProfileName,
@@ -265,7 +246,7 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [rawPageRefreshing, view.requestId]);
+    }, [pageRefreshRequestNonce, rawPageRefreshing]);
 
     const isPageRefreshing = rawPageRefreshing && showDelayedPageRefresh;
     const isPageLoading = enabled && !view.loadError && (!view.pageReady || isPageRefreshing);

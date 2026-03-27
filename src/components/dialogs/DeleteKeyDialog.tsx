@@ -6,51 +6,40 @@ import {
     Text,
     VStack,
 } from "@chakra-ui/react";
-import { useEffect } from "react";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { HiX } from "react-icons/hi"
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { toaster } from "../ui/toaster";
 import { deleteKey } from "@/api/etcd";
-import { useActiveProfile } from "@/contexts/active-profile";
-import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
 interface DeleteKeyDialogProps {
     keyToDelete: string;
     valueToDelete: string;
     onClose: () => void;
+    onSuccess: () => Promise<void> | void;
 }
 
 function DeleteKeyDialog({
     keyToDelete,
     valueToDelete,
-    onClose
+    onClose,
+    onSuccess,
 }: DeleteKeyDialogProps) {
-    const queryClient = useQueryClient();
-    const { activeProfile } = useActiveProfile();
-    const { mutateAsync, isPending } = useMutation<void, String, { key: string }>({
+    const borderColor = useColorModeValue("gray.300", "gray.600");
+    const backgroundColor = useColorModeValue("gray.100", "gray.800");
+    const { mutateAsync, isPending } = useMutation<void, string, { key: string }>({
         mutationFn: async ({ key }) => await deleteKey(key),
         onSuccess: async () => {
-            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
+            await onSuccess();
+            onClose();
         },
-        onError: (error: String) => {
+        onError: (error: string) => {
             toaster.create({ type: "error", title: "Delete Key Failed", description: error, closable: true });
         },
     });
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onClose]);
-
     return (
-        <Dialog.Root modal={true} open={true}>
+        <Dialog.Root modal={true} open={true} onOpenChange={(details) => { if (!details.open) onClose(); }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content maxWidth="500px" width="90%" overflow="visible">
@@ -71,8 +60,8 @@ function DeleteKeyDialog({
                                 p={2}
                                 borderWidth="1px"
                                 borderRadius="md"
-                                borderColor={useColorModeValue("gray.300", "gray.600")}
-                                bg={useColorModeValue("gray.100", "gray.800")}
+                                borderColor={borderColor}
+                                bg={backgroundColor}
                             >
                                 <Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap">
                                     {keyToDelete}
@@ -86,8 +75,8 @@ function DeleteKeyDialog({
                                 p={2}
                                 borderWidth="1px"
                                 borderRadius="md"
-                                borderColor={useColorModeValue("gray.300", "gray.600")}
-                                bg={useColorModeValue("gray.100", "gray.800")}
+                                borderColor={borderColor}
+                                bg={backgroundColor}
                             >
                                 <Text fontFamily="mono" fontSize="sm" whiteSpace="pre-wrap">
                                     {valueToDelete}
@@ -104,7 +93,7 @@ function DeleteKeyDialog({
                         </Button>
                         <Button
                             colorPalette="red"
-                            onClick={() => mutateAsync({ key: keyToDelete }).then(onClose)}
+                            onClick={() => void mutateAsync({ key: keyToDelete })}
                             loading={isPending}
                             loadingText="Deleting"
                             disabled={!keyToDelete.trim() || isPending}

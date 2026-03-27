@@ -1,8 +1,7 @@
 import { DataList, Heading, HoverCard, HStack, Mark, type TextProps } from "@chakra-ui/react";
-import { useQuery } from "@tanstack/react-query";
 import type { CSSProperties, ReactNode } from "react";
-import { formatTimestamp } from "../api/etcd";
-import { parseTimestamp, splitTextByTimestamps } from "../utils/timestamp";
+import { useMemo } from "react";
+import { formatTimestamp, parseTimestamp, splitTextByTimestamps } from "../utils/timestamp";
 
 export interface TimestampMarkProps {
     timestamp: string;
@@ -18,11 +17,7 @@ interface RenderTimestampAnnotatedTextOptions {
 }
 
 export function TimestampMark({ timestamp, fontSize, textStyle }: TimestampMarkProps) {
-    const { data: formattedTime } = useQuery({
-        queryKey: ["timestamp", timestamp],
-        queryFn: () => formatTimestamp(parseTimestamp(timestamp)),
-        staleTime: Infinity,
-    });
+    const formattedTime = useMemo(() => formatTimestamp(parseTimestamp(timestamp)), [timestamp]);
 
     return (
         <HoverCard.Root openDelay={300} positioning={{ placement: "top" }}>
@@ -43,11 +38,11 @@ export function TimestampMark({ timestamp, fontSize, textStyle }: TimestampMarkP
                     <DataList.Root orientation="horizontal" size="sm" mt={2}>
                         <DataList.Item>
                             <DataList.ItemLabel width="3em" minW="0">Local</DataList.ItemLabel>
-                            <DataList.ItemValue>{formattedTime?.local ?? "Loading..."}</DataList.ItemValue>
+                            <DataList.ItemValue>{formattedTime.local}</DataList.ItemValue>
                         </DataList.Item>
                         <DataList.Item>
                             <DataList.ItemLabel width="3em" minW="0">UTC</DataList.ItemLabel>
-                            <DataList.ItemValue>{formattedTime?.utc ?? "Loading..."}</DataList.ItemValue>
+                            <DataList.ItemValue>{formattedTime.utc}</DataList.ItemValue>
                         </DataList.Item>
                     </DataList.Root>
                 </HoverCard.Content>

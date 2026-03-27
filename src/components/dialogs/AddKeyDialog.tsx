@@ -1,52 +1,40 @@
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, ChangeEvent } from "react";
 import { putKey } from "../../api/etcd";
 import { Button, CloseButton, Dialog, Field, Input, Textarea, VStack } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
 
 import { HiX } from "react-icons/hi";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { toaster } from "../ui/toaster";
-import { useActiveProfile } from "@/contexts/active-profile";
-import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
 
 
 interface AddKeyDialogProps {
     defaultKeyPrefix: string;
     onClose: () => void;
+    onSuccess: () => Promise<void> | void;
 }
 
 function AddKeyDialog({
     defaultKeyPrefix,
-    onClose
+    onClose,
+    onSuccess,
 }: AddKeyDialogProps) {
-    const queryClient = useQueryClient();
-    const { activeProfile } = useActiveProfile();
     const [dialogNewKey, setDialogNewKey] = useState(defaultKeyPrefix);
     const [dialogNewValue, setDialogNewValue] = useState("");
-    const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
+    const { mutateAsync, isPending } = useMutation<void, string, { key: string, value: string }>({
         mutationFn: async ({ key, value }) => await putKey(key, value),
         onSuccess: async () => {
-            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
+            await onSuccess();
+            onClose();
         },
-        onError: (error: String) => {
+        onError: (error: string) => {
             console.error("Failed to add etcd item:", error);
             toaster.create({ type: "error", title: "Add Key Failed", description: error, closable: true });
         },
     });
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onClose]);
-
     return (
-        <Dialog.Root modal={true} open={true}>
+        <Dialog.Root modal={true} open={true} onOpenChange={(details) => { if (!details.open) onClose(); }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content maxWidth="600px" width="90%">
@@ -94,7 +82,7 @@ function AddKeyDialog({
                         <Button variant="outline" mr={3} onClick={onClose}>
                             Cancel
                         </Button>
-                        <Button onClick={() => mutateAsync({ key: dialogNewKey, value: dialogNewValue }).then(onClose)}
+                        <Button onClick={() => void mutateAsync({ key: dialogNewKey, value: dialogNewValue })}
                             loading={isPending} disabled={!dialogNewKey.trim() || !dialogNewValue.trim() || isPending}>
                             Add
                         </Button>

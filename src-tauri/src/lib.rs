@@ -3,11 +3,11 @@ mod config;
 mod core;
 mod dashboard;
 mod metrics;
+mod query_manager;
 mod snapshot;
 mod state;
 mod update;
 
-use chrono::{DateTime, Local, TimeZone, Utc};
 use serde::Serialize;
 use state::AppState;
 use std::collections::HashMap;
@@ -15,9 +15,11 @@ use std::fs::{File, OpenOptions};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::webview::cookie::time::format_description::well_known::Rfc3339;
 use tauri::{Emitter, Manager, State};
+use tauri_plugin_log::fern::colors::{Color, ColoredLevelConfig};
 use tauri_plugin_log::{Target, TargetKind, TimezoneStrategy};
+use tauri_plugin_opener::OpenerExt;
+use time::format_description::well_known::Rfc3339;
 use tokio::sync::{Mutex, Notify};
 
 use crate::metrics::{fetch_metrics_text, parse_metrics_text};
@@ -29,21 +31,8 @@ fn format_log_location(module_path: Option<&str>, target: &str, line: Option<u32
     format!("{}:{}", location, line.unwrap_or(0))
 }
 
-#[derive(Clone, Default)]
-struct UpdateCheckWorkerControl {
-    wake_signal: Arc<Notify>,
-}
-
-#[derive(Serialize, Clone, Debug)]
-#[serde(rename_all = "snake_case")]
-enum UpdateCheckTrigger {
-    Automatic,
-    Manual,
-}
-
 #[derive(Serialize, Clone)]
 struct UpdateCheckEvent {
-    trigger: UpdateCheckTrigger,
     #[serde(skip_serializing_if = "Option::is_none")]
     result: Option<update::UpdateCheckResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -56,17 +45,11 @@ fn emit_update_check_event(app_handle: &tauri::AppHandle, payload: UpdateCheckEv
     }
 }
 
-async fn run_update_check_and_emit(
-    app_handle: &tauri::AppHandle,
-    channel: config::UpdateChannel,
-    trigger: UpdateCheckTrigger,
-) {
+async fn run_update_check_and_emit(app_handle: &tauri::AppHandle, channel: config::UpdateChannel) {
     let current_version = app_handle.package_info().version.clone();
-    let channel_for_log = channel.clone();
 
     log::info!(
-        "Checking update on GitHub (trigger={:?}, channel={channel_for_log}, current={current_version})",
-        trigger
+        "Checking automatic update on GitHub (channel={channel}, current={current_version})"
     );
 
     match update::check_update(channel, current_version).await {
@@ -74,7 +57,6 @@ async fn run_update_check_and_emit(
             emit_update_check_event(
                 app_handle,
                 UpdateCheckEvent {
-                    trigger,
                     result: Some(result),
                     error: None,
                 },
@@ -85,7 +67,6 @@ async fn run_update_check_and_emit(
             emit_update_check_event(
                 app_handle,
                 UpdateCheckEvent {
-                    trigger,
                     result: None,
                     error: Some(err),
                 },
@@ -94,10 +75,7 @@ async fn run_update_check_and_emit(
     }
 }
 
-async fn update_check_worker(
-    app_handle: tauri::AppHandle,
-    worker_control: UpdateCheckWorkerControl,
-) {
+async fn update_check_worker(app_handle: tauri::AppHandle, worker_control: Arc<Notify>) {
     let startup_delay = std::time::Duration::from_secs(30);
     let mut first_check_pending = true;
 
@@ -115,11 +93,11 @@ async fn update_check_worker(
             tokio::select! {
                 _ = tokio::time::sleep(startup_delay) => {
                     if !matches!(schedule, config::UpdateCheckSchedule::Never) {
-                        run_update_check_and_emit(&app_handle, channel, UpdateCheckTrigger::Automatic).await;
+                        run_update_check_and_emit(&app_handle, channel).await;
                     }
                     first_check_pending = false;
                 }
-                _ = worker_control.wake_signal.notified() => {
+                _ = worker_control.notified() => {
                     first_check_pending = false;
                 }
             }
@@ -129,14 +107,14 @@ async fn update_check_worker(
 
         match schedule.interval_duration() {
             None => {
-                worker_control.wake_signal.notified().await;
+                worker_control.notified().await;
             }
             Some(interval) => {
                 tokio::select! {
                     _ = tokio::time::sleep(interval) => {
-                        run_update_check_and_emit(&app_handle, channel, UpdateCheckTrigger::Automatic).await;
+                        run_update_check_and_emit(&app_handle, channel).await;
                     }
-                    _ = worker_control.wake_signal.notified() => {}
+                    _ = worker_control.notified() => {}
                 }
             }
         }
@@ -157,43 +135,6 @@ async fn check_update(
         .inspect_err(|e| log::error!("Update check failed: {e}"))
 }
 
-#[tauri::command]
-async fn trigger_update_check(
-    app_handle: tauri::AppHandle,
-    state: State<'_, Mutex<AppState>>,
-) -> Result<(), String> {
-    let channel = {
-        let app_state = state.lock().await;
-        app_state.app_config.update_channel.clone()
-    };
-
-    run_update_check_and_emit(&app_handle, channel, UpdateCheckTrigger::Manual).await;
-    Ok(())
-}
-
-#[derive(Serialize)]
-struct FormattedTimestamp {
-    utc: String,
-    local: String,
-}
-
-/// Format a Unix timestamp (in milliseconds) to ISO 8601 strings
-/// Returns both UTC and local time representations
-#[tauri::command]
-fn format_timestamp(timestamp_ms: i64) -> Result<FormattedTimestamp, String> {
-    // Convert milliseconds to DateTime<Utc>
-    let datetime_utc = Utc
-        .timestamp_millis_opt(timestamp_ms)
-        .single()
-        .ok_or_else(|| format!("Invalid timestamp: {}", timestamp_ms))?;
-
-    let utc = datetime_utc.to_rfc3339_opts(chrono::SecondsFormat::Millis, true);
-    let datetime_local: DateTime<Local> = datetime_utc.into();
-    let local = datetime_local.to_rfc3339_opts(chrono::SecondsFormat::Millis, false);
-
-    Ok(FormattedTimestamp { utc, local })
-}
-
 /// Initialize the etcd client managed by the application state.
 ///
 /// Returns false if the ```current_profile``` is not pointinng to a valid profile,
@@ -201,10 +142,9 @@ fn format_timestamp(timestamp_ms: i64) -> Result<FormattedTimestamp, String> {
 #[tauri::command]
 async fn initialize_etcd_client(state: State<'_, Mutex<AppState>>) -> Result<bool, String> {
     log::info!("Initializing etcd client...");
-    let _ = state.lock().await.etcd_client.take();
-    state
-        .lock()
-        .await
+    let mut app_state = state.lock().await;
+    app_state.etcd_client = None;
+    app_state
         .init_client()
         .await
         .inspect(|_| log::info!("Etcd client initialized successfully"))
@@ -223,7 +163,6 @@ async fn put_key(
     core::put_key(&key, &value, &mut state)
         .await
         .inspect_err(|e| log::error!("Failed to put key {}: {}", key, e))?;
-    state.invalidate_current_profile_snapshots()?;
     Ok(())
 }
 
@@ -235,7 +174,6 @@ async fn delete_key(key: String, state: State<'_, Mutex<AppState>>) -> Result<()
     core::delete_key(&key, &mut state)
         .await
         .inspect_err(|e| log::error!("Failed to delete key {}: {}", key, e))?;
-    state.invalidate_current_profile_snapshots()?;
     Ok(())
 }
 
@@ -316,7 +254,7 @@ async fn get_default_config() -> Result<config::AppConfig, String> {
 async fn update_config(
     config: config::AppConfig,
     state: State<'_, Mutex<AppState>>,
-    update_worker_control: State<'_, UpdateCheckWorkerControl>,
+    update_worker_control: State<'_, Arc<Notify>>,
     app_handle: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut app_state = state.lock().await;
@@ -360,11 +298,10 @@ async fn update_config(
     if should_reconnect {
         log::info!("Current profile changed, resetting client");
         app_state.etcd_client = None; // Reset the client
-        app_state.clear_snapshots();
     }
 
     log::info!("Configuration updated successfully");
-    update_worker_control.wake_signal.notify_waiters();
+    update_worker_control.notify_waiters();
     Ok(())
 }
 
@@ -397,23 +334,23 @@ async fn config_file_path(app_handle: tauri::AppHandle) -> Result<String, String
 
 #[tauri::command]
 async fn open_config_file(app_handle: tauri::AppHandle) -> Result<(), String> {
-    // Get the config file path
     let path = config::AppConfig::get_config_path(&app_handle)?;
 
-    // Open the file with the default application
-    open::that(path).map_err(|e| format!("Failed to open config file: {}", e))
+    app_handle
+        .opener()
+        .open_path(path.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|e| format!("Failed to open config file: {e}"))
 }
 
 #[tauri::command]
 async fn open_config_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
-    // Get the config file path
     let path = config::AppConfig::get_config_path(&app_handle)?;
-
-    // Get the parent directory
     let folder_path = path.parent().ok_or("Failed to get config folder path")?;
 
-    // Open the folder with the default application
-    open::that(folder_path).map_err(|e| format!("Failed to open config folder: {}", e))
+    app_handle
+        .opener()
+        .open_path(folder_path.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|e| format!("Failed to open config folder: {e}"))
 }
 
 #[tauri::command]
@@ -431,14 +368,15 @@ async fn open_devtools(app_handle: tauri::AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 async fn open_log_folder(app_handle: tauri::AppHandle) -> Result<(), String> {
-    // Get the log directory path
     let log_dir = app_handle
         .path()
         .app_log_dir()
         .map_err(|e| format!("Failed to get log directory path: {}", e))?;
 
-    // Open the folder with the default application
-    open::that(log_dir).map_err(|e| format!("Failed to open log folder: {}", e))
+    app_handle
+        .opener()
+        .open_path(log_dir.to_string_lossy().into_owned(), None::<&str>)
+        .map_err(|e| format!("Failed to open log folder: {e}"))
 }
 
 #[tauri::command]
@@ -455,9 +393,7 @@ async fn save_path_history(
         read_history_file(&history_path).unwrap_or_default();
 
     // Get or create history for this profile
-    let history = history_map
-        .entry(profile_name.clone())
-        .or_default();
+    let history = history_map.entry(profile_name.clone()).or_default();
 
     // Don't add duplicates, remove if exists and add to front
     history.retain(|p| p != &path);
@@ -521,9 +457,7 @@ async fn delete_path_history(
         read_history_file(&history_path).unwrap_or_default();
 
     // Get or create history for this profile
-    let history = history_map
-        .entry(profile_name.clone())
-        .or_default();
+    let history = history_map.entry(profile_name.clone()).or_default();
 
     // Remove the path from history
     history.retain(|p| p != &path);
@@ -602,7 +536,7 @@ async fn get_key_at_revision(
     key: String,
     revision: i64,
     state: State<'_, Mutex<AppState>>,
-) -> Result<Option<client::KvEntry>, String> {
+) -> Result<Option<snapshot::KvEntry>, String> {
     log::debug!("Getting key {} at revision {}", key, revision);
     let mut state = state.lock().await;
     core::get_key_at_revision(&key, revision, &mut state)
@@ -630,14 +564,23 @@ async fn fetch_metrics(
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(
+        .plugin({
+            let colors = ColoredLevelConfig::new()
+                .error(Color::Red)
+                .warn(Color::Yellow)
+                .info(Color::Green)
+                .debug(Color::Blue)
+                .trace(Color::BrightBlack);
             tauri_plugin_log::Builder::new()
+                .level(log::LevelFilter::Off)
+                .level_for("etcd_gui_lib", log::LevelFilter::Trace)
                 .clear_targets()
                 .targets([
                     Target::new(TargetKind::Webview),
                     Target::new(TargetKind::LogDir {
                         file_name: "app".to_string().into(),
                     }),
+                    Target::new(TargetKind::Stdout),
                 ])
                 .format(move |out, message, record| {
                     out.finish(format_args!(
@@ -646,7 +589,7 @@ pub fn run() {
                             .get_now()
                             .format(&Rfc3339)
                             .expect("RFC3339 formatting should succeed"),
-                        record.level(),
+                        colors.color(record.level()),
                         record.target(),
                         format_log_location(record.module_path(), record.target(), record.line()),
                         message
@@ -654,17 +597,15 @@ pub fn run() {
                 })
                 .max_file_size(1024 * 1024) // 1 MB
                 .rotation_strategy(tauri_plugin_log::RotationStrategy::KeepSome(20))
-                .build(),
-        )
+                .build()
+        })
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_window_state::Builder::new().build())
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             check_update,
-            trigger_update_check,
             initialize_etcd_client,
             dashboard::start_dashboard_query,
-            dashboard::cancel_dashboard_query,
             put_key,
             delete_key,
             get_cluster_info,
@@ -683,13 +624,12 @@ pub fn run() {
             delete_path_history,
             get_system_fonts,
             get_key_at_revision,
-            format_timestamp,
             fetch_metrics,
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));
 
-            let update_worker_control = UpdateCheckWorkerControl::default();
+            let update_worker_control = Arc::new(Notify::new());
             let worker_control = update_worker_control.clone();
             let app_handle = app.handle().clone();
 

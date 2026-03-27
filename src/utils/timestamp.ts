@@ -1,3 +1,5 @@
+import { DateTime } from "luxon";
+
 /**
  * Timestamp utilities for identifying and formatting Unix timestamps
  */
@@ -38,6 +40,18 @@ export function parseTimestamp(str: string): number {
     const num = parseInt(str, 10);
     // If it's 10 digits, it's in seconds, convert to milliseconds
     return str.length === 10 ? num * 1000 : num;
+}
+
+export function formatTimestamp(timestampMs: number): { utc: string; local: string } {
+    const dateTime = DateTime.fromMillis(timestampMs);
+    if (!dateTime.isValid) {
+        throw new Error(`Invalid timestamp: ${timestampMs}`);
+    }
+
+    return {
+        utc: dateTime.toUTC().toISO()!,
+        local: dateTime.toLocal().toISO()!,
+    };
 }
 
 /**

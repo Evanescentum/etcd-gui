@@ -401,6 +401,7 @@ function Dashboard({ configLoading }: DashboardProps) {
       {dialogState && dialogState.action === "add" && (
         <AddKeyDialog
           defaultKeyPrefix={keyPrefixInput}
+          onSuccess={queryResult.refetch}
           onClose={() => setDialogState(null)}
         />
       )}
@@ -410,6 +411,7 @@ function Dashboard({ configLoading }: DashboardProps) {
         <EditKeyDialog
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
+          onSuccess={queryResult.refetch}
           onClose={() => setDialogState(null)}
         />
       )}
@@ -419,6 +421,7 @@ function Dashboard({ configLoading }: DashboardProps) {
         <DeleteKeyDialog
           keyToDelete={dialogState.key}
           valueToDelete={dialogState.value}
+          onSuccess={queryResult.refetch}
           onClose={() => setDialogState(null)}
         />
       )}

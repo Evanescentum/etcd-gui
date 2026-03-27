@@ -1,53 +1,42 @@
-import { useState, useEffect, ChangeEvent } from "react";
+import { useState, ChangeEvent } from "react";
 import { Button, CloseButton, Dialog, Field, Input, VStack, Box, Textarea, Text } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
 import { putKey } from "@/api/etcd";
 import { HiX } from "react-icons/hi";
 import { toaster } from "../ui/toaster";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useActiveProfile } from "@/contexts/active-profile";
-import { etcdQueryKeys } from "@/hooks/useEtcdQuery";
+import { useMutation } from "@tanstack/react-query";
 
 interface EditKeyDialogProps {
     keyToEdit: string;
     valueToEdit: string;
     onClose: () => void;
+    onSuccess: () => Promise<void> | void;
 }
 
 function EditKeyDialog({
     keyToEdit,
     valueToEdit,
-    onClose
+    onClose,
+    onSuccess,
 }: EditKeyDialogProps) {
-    const queryClient = useQueryClient();
-    const { activeProfile } = useActiveProfile();
     const [dialogKey, setDialogKey] = useState(keyToEdit);
     const [dialogValue, setDialogValue] = useState(valueToEdit);
     const [isKeyEditable, setIsKeyEditable] = useState(false);
-    const { mutateAsync, isPending } = useMutation<void, String, { key: string, value: string }>({
+    const readOnlyBackground = useColorModeValue("gray.100", "gray.700");
+    const { mutateAsync, isPending } = useMutation<void, string, { key: string, value: string }>({
         mutationFn: async ({ key, value }) => await putKey(key, value),
         onSuccess: async () => {
-            await queryClient.invalidateQueries({ queryKey: etcdQueryKeys.kvProfile(activeProfile.name) });
+            await onSuccess();
+            onClose();
         },
-        onError: (error: String) => {
+        onError: (error: string) => {
             toaster.create({ type: "error", title: "Edit Key Failed", description: error, closable: true });
         },
     });
 
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "Escape") {
-                onClose();
-            }
-        };
-
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [onClose]);
-
     return (
-        <Dialog.Root modal={true} open={true}>
+        <Dialog.Root modal={true} open={true} onOpenChange={(details) => { if (!details.open) onClose(); }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
                 <Dialog.Content maxWidth="50%">
@@ -66,7 +55,7 @@ function EditKeyDialog({
                                         onChange={(e) => setDialogKey(e.target.value)}
                                         placeholder="Enter key path"
                                         readOnly={!isKeyEditable}
-                                        bg={!isKeyEditable ? useColorModeValue("gray.100", "gray.700") : undefined}
+                                        bg={!isKeyEditable ? readOnlyBackground : undefined}
                                     />
                                     <Button
                                         position="absolute"
@@ -81,7 +70,7 @@ function EditKeyDialog({
                                     </Button>
                                 </Box>
                                 {isKeyEditable && (
-                                    <Text fontFamily="moo" fontSize="xs" color="orange.500" mt={1}>
+                                    <Text fontFamily="mono" fontSize="xs" color="orange.500" mt={1}>
                                         Warning: Changing the key will create a new key-value pair and leave the old one intact
                                     </Text>
                                 )}
@@ -106,7 +95,7 @@ function EditKeyDialog({
                             Cancel
                         </Button>
                         <Button
-                            onClick={() => mutateAsync({ key: dialogKey, value: dialogValue }).then(onClose)}
+                            onClick={() => void mutateAsync({ key: dialogKey, value: dialogValue })}
                             disabled={!dialogKey.trim() || !dialogValue.trim() || isPending}
                             loading={isPending}
                         >
