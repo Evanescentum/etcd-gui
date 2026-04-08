@@ -13,7 +13,7 @@ pub async fn connect(profile: &Profile) -> Result<etcd_client::Client, String> {
     // Build connection options
     let mut options = ConnectOptions::new();
     if let Some((username, password)) = &profile.user {
-        log::debug!("Using authentication for user: {}", username);
+        log::debug!("Using authentication for user: {username}");
         options = options.with_user(username, password.as_str());
     }
     if let Some(timeout) = profile.timeout_ms {
@@ -26,8 +26,8 @@ pub async fn connect(profile: &Profile) -> Result<etcd_client::Client, String> {
     Client::connect(endpoints, Some(options))
         .await
         .map_err(|err| {
-            log::error!("Failed to connect to etcd: {}", err);
-            format!("Failed to connect to etcd: {}", err)
+            log::error!("Failed to connect to etcd: {err}");
+            format!("Failed to connect to etcd: {err}")
         })
 }
 

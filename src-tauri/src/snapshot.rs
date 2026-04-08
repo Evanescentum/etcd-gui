@@ -145,9 +145,9 @@ impl SnapshotStore {
             return Vec::new();
         }
         let mut segments = Vec::new();
-        let mut cursor = (&range.start).clone();
+        let mut cursor = range.start.clone();
 
-        for (s, e) in self.overlapping_scanned_ranges(&range) {
+        for (s, e) in self.overlapping_scanned_ranges(range) {
             if cursor < *s {
                 // There's a gap between cursor and the next scanned range:
                 //     [-- Missing)[-- Cached ---) ...
@@ -169,9 +169,9 @@ impl SnapshotStore {
         }
 
         // Trailing gap
-        if cursor < *&range.end {
+        if cursor < range.end {
             segments.push(CacheSegment::Missing {
-                range: cursor..(&range.end).clone(),
+                range: cursor..range.end.clone(),
             });
         }
 
@@ -195,7 +195,7 @@ impl SnapshotStore {
         // All ranges whose start is in (start, end) necessarily overlaps.
         let middle = self
             .ranged_entries
-            .range::<Vec<_>, _>(&key_after(&start)..end)
+            .range::<Vec<_>, _>(&key_after(start)..end)
             .map(|(s, g)| (s, &g.end));
 
         left_candidate.into_iter().chain(middle)
@@ -268,12 +268,12 @@ impl SnapshotStore {
                 .all(|e| e.value.is_some())
                 .then_some(range),
         );
-        valued_intervals.extend(removed.iter().filter_map(|(s, g)| {
-            g.entries
+        valued_intervals.extend(
+            removed
                 .iter()
-                .all(|e| e.value.is_some())
-                .then(|| s.clone()..g.end.clone())
-        }));
+                .filter(|(_, g)| g.entries.iter().all(|e| e.value.is_some()))
+                .map(|(s, g)| s.clone()..g.end.clone()),
+        );
 
         // Sort and merge overlapping/adjacent valued intervals.
         valued_intervals.sort_by(|a, b| a.start.cmp(&b.start));

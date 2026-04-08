@@ -71,8 +71,7 @@ pub async fn count_keys(
                     total: response.count(),
                     revision: response
                         .header()
-                        .map(|header| header.revision())
-                        .unwrap_or(0),
+                        .map_or(0, etcd_client::ResponseHeader::revision),
                 })
         })
         .await
@@ -81,14 +80,18 @@ pub async fn count_keys(
 /// Add a new key-value pair to etcd
 pub async fn put_key(key: &str, value: &str, state: &mut AppState) -> Result<(), String> {
     state
-        .perform_op(async |mut client: etcd_client::Client| client.put(key, value, None).await.map(|_| ()))
+        .perform_op(async |mut client: etcd_client::Client| {
+            client.put(key, value, None).await.map(|_| ())
+        })
         .await
 }
 
 /// Delete a key from etcd
 pub async fn delete_key(key: &str, state: &mut AppState) -> Result<(), String> {
     state
-        .perform_op(async |mut client: etcd_client::Client| client.delete(key, None).await.map(|_| ()))
+        .perform_op(async |mut client: etcd_client::Client| {
+            client.delete(key, None).await.map(|_| ())
+        })
         .await
 }
 

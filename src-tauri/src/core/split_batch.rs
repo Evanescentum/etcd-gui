@@ -42,12 +42,12 @@ pub fn item_from_kv(kv: etcd_client::KeyValue, only_keys: bool) -> Option<KvEntr
 pub trait Splittable {
     type Output;
 
-    /// Create base GetOptions for batch queries.
+    /// Create base `GetOptions` for batch queries.
     fn get_options(&self) -> GetOptions {
         GetOptions::new()
     }
 
-    /// Map KeyValue vector to output type.
+    /// Map `KeyValue` vector to output type.
     fn map_kvs(kvs: Vec<etcd_client::KeyValue>) -> impl Iterator<Item = Self::Output>;
 }
 
@@ -90,7 +90,7 @@ pub async fn execute_splittable<S: Splittable + Clone>(
                     log::info!("Full-range query is out of range, falling back to split batches");
                 }
                 Err(e) => {
-                    log::error!("Error fetching keys: {}", e);
+                    log::error!("Error fetching keys: {e}");
                     return Err(e);
                 }
             }
@@ -107,7 +107,7 @@ pub async fn execute_splittable<S: Splittable + Clone>(
                 )
                 .await
                 .map(|res| res.count())?;
-            log::debug!("Total keys: {}", count);
+            log::debug!("Total keys: {count}");
 
             let mut results = Vec::with_capacity(count as usize);
             let mut tasks = VecDeque::new();
@@ -185,7 +185,7 @@ pub async fn execute_splittable<S: Splittable + Clone>(
                         });
                     }
                     Err(e) => {
-                        log::error!("Error fetching keys: {}", e);
+                        log::error!("Error fetching keys: {e}");
                         return Err(e);
                     }
                 }

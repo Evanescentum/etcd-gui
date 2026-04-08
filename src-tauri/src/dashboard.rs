@@ -219,7 +219,7 @@ async fn run_dashboard_query(
         let page_kvs = if page_kvs.iter().any(|kv| kv.value.is_none()) {
             // Fetch values for the current page if any of the entries are missing values
             let range = page_kvs[0].key.as_bytes().to_owned()
-                ..key_after(&page_kvs[page_kvs.len() - 1].key.as_bytes());
+                ..key_after(page_kvs[page_kvs.len() - 1].key.as_bytes());
             snapshot_locked
                 .scan_and_merge_entries(state, KvSplitter, range, sort, revision)
                 .await
