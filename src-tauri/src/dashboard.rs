@@ -220,9 +220,7 @@ async fn run_dashboard_query(
             // Fetch values for the current page if any of the entries are missing values
             let range = page_kvs[0].key.as_bytes().to_owned()
                 ..key_after(&page_kvs[page_kvs.len() - 1].key.as_bytes());
-            snapshot
-                .write()
-                .await
+            snapshot_locked
                 .scan_and_merge_entries(state, KvSplitter, range, sort, revision)
                 .await
                 .map_err(|e| e.to_string())?
