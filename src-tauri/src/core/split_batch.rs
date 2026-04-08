@@ -67,6 +67,34 @@ pub async fn execute_splittable<S: Splittable + Clone>(
 ) -> Result<Vec<S::Output>, String> {
     state
         .perform_op(async |mut client: etcd_client::Client| {
+            let full_res = client
+                .get(
+                    range.start.clone(),
+                    splitter
+                        .get_options()
+                        .with_serializable()
+                        .with_range(range.end.clone())
+                        .with_sort(sort.0, sort.1)
+                        .with_revision(revision)
+                        .into(),
+                )
+                .await;
+
+            match full_res {
+                Ok(mut res) => {
+                    let kvs = res.take_kvs();
+                    log::debug!("Fetched {} keys in full-range query", kvs.len());
+                    return Ok(S::map_kvs(kvs).collect());
+                }
+                e if is_out_of_range_error(&e) => {
+                    log::info!("Full-range query is out of range, falling back to split batches");
+                }
+                Err(e) => {
+                    log::error!("Error fetching keys: {}", e);
+                    return Err(e);
+                }
+            }
+
             let count = client
                 .get(
                     range.start.clone(),
