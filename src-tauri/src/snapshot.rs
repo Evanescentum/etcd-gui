@@ -383,14 +383,14 @@ mod regression_tests {
     }
 }
 
-#[cfg(any())]
+#[cfg(test)]
 mod tests {
     use super::*;
 
-    fn make_entry(key: &str, value: &str) -> KvEntry {
+    fn make_entry(key: &str, value: Option<&str>) -> KvEntry {
         KvEntry {
             key: key.to_string(),
-            value: value.to_string(),
+            value: value.map(str::to_string),
             version: 1,
             create_revision: 1,
             mod_revision: 1,
@@ -398,92 +398,136 @@ mod tests {
         }
     }
 
-    // ── merge_scanned_range ──────────────────────────────────────
+    fn make_ascii_entries(range: Range<u8>, value: Option<&str>) -> Vec<KvEntry> {
+        range
+            .map(|byte| make_entry(&String::from_utf8(vec![byte]).unwrap(), value))
+            .collect()
+    }
 
-    #[test]
-    fn merge_non_overlapping_ranges() {
-        let mut store = SnapshotStore::default();
-        store.merge_scanned_range(b"a".to_vec()..b"c".to_vec());
-        store.merge_scanned_range(b"e".to_vec()..b"g".to_vec());
-        assert_eq!(store.scanned_ranges.len(), 2);
-        assert_eq!(store.scanned_ranges[&b"a".to_vec()], b"c".to_vec());
-        assert_eq!(store.scanned_ranges[&b"e".to_vec()], b"g".to_vec());
+    fn keys(entries: &[KvEntry]) -> Vec<&str> {
+        entries.iter().map(|entry| entry.key.as_str()).collect()
     }
 
     #[test]
-    fn merge_adjacent_ranges() {
-        let mut store = SnapshotStore::default();
-        store.merge_scanned_range(b"a".to_vec()..b"c".to_vec());
-        store.merge_scanned_range(b"c".to_vec()..b"e".to_vec());
-        assert_eq!(store.scanned_ranges.len(), 1);
-        assert_eq!(store.scanned_ranges[&b"a".to_vec()], b"e".to_vec());
-    }
-
-    #[test]
-    fn merge_overlapping_ranges() {
-        let mut store = SnapshotStore::default();
-        store.merge_scanned_range(b"a".to_vec()..b"d".to_vec());
-        store.merge_scanned_range(b"c".to_vec()..b"f".to_vec());
-        assert_eq!(store.scanned_ranges.len(), 1);
-        assert_eq!(store.scanned_ranges[&b"a".to_vec()], b"f".to_vec());
-    }
-
-    #[test]
-    fn merge_containing_range() {
-        let mut store = SnapshotStore::default();
-        store.merge_scanned_range(b"b".to_vec()..b"d".to_vec());
-        store.merge_scanned_range(b"a".to_vec()..b"e".to_vec());
-        assert_eq!(store.scanned_ranges.len(), 1);
-        assert_eq!(store.scanned_ranges[&b"a".to_vec()], b"e".to_vec());
-    }
-
-    #[test]
-    fn merge_multiple_ranges_at_once() {
-        let mut store = SnapshotStore::default();
-        store.merge_scanned_range(b"a".to_vec()..b"c".to_vec());
-        store.merge_scanned_range(b"e".to_vec()..b"g".to_vec());
-        store.merge_scanned_range(b"i".to_vec()..b"k".to_vec());
-        // Now merge a range that spans all three
-        store.merge_scanned_range(b"b".to_vec()..b"j".to_vec());
-        assert_eq!(store.scanned_ranges.len(), 1);
-        assert_eq!(store.scanned_ranges[&b"a".to_vec()], b"k".to_vec());
-    }
-
-    // ── insert_scanned_keys ──────────────────────────────────────
-
-    #[test]
-    fn insert_scanned_keys_stores_keys_and_marks_range() {
-        let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"a".to_vec(), b"b".to_vec(), b"c".to_vec()]);
-        assert_eq!(store.scanned_ranges.len(), 1);
-        assert_eq!(store.entries.len(), 3);
-        assert!(store.entries[&b"a".to_vec()].is_none());
-    }
-
-    // ── insert_values ────────────────────────────────────────────
-
-    #[test]
-    fn insert_values_fills_existing_keys() {
-        let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"a".to_vec(), b"b".to_vec()]);
-        store.insert_values(&[make_entry("a", "val_a")]);
-        assert!(store.entries[&b"a".to_vec()].is_some());
-        assert!(store.entries[&b"b".to_vec()].is_none());
-    }
-
-    #[test]
-    fn insert_values_ignores_unknown_keys() {
-        let mut store = SnapshotStore::default();
-        store.insert_values(&[make_entry("z", "val_z")]);
-        assert!(store.entries.get(&b"z".to_vec()).is_none());
-    }
-
-    // ── query_range ──────────────────────────────────────────────
-
-    #[test]
-    fn query_range_fully_missing() {
+    fn break_range_returns_empty_for_empty_query() {
         let store = SnapshotStore::default();
+
+        assert!(store.break_range(&(Vec::new()..Vec::new())).is_empty());
+    }
+
+    #[test]
+    fn merge_non_overlapping_ranges_keeps_separate_groups() {
+        let mut store = SnapshotStore::default();
+
+        store.merge_scanned_range(
+            b"a".to_vec()..b"c".to_vec(),
+            vec![make_entry("a", None), make_entry("b", None)],
+        );
+        store.merge_scanned_range(
+            b"e".to_vec()..b"g".to_vec(),
+            vec![make_entry("e", None), make_entry("f", None)],
+        );
+
+        assert_eq!(store.ranged_entries.len(), 2);
+        assert_eq!(store.ranged_entries[&b"a".to_vec()].end, b"c".to_vec());
+        assert_eq!(store.ranged_entries[&b"e".to_vec()].end, b"g".to_vec());
+    }
+
+    #[test]
+    fn merge_adjacent_ranges_with_same_state_coalesces() {
+        let mut store = SnapshotStore::default();
+
+        store.merge_scanned_range(
+            b"a".to_vec()..b"c".to_vec(),
+            vec![make_entry("a", None), make_entry("b", None)],
+        );
+        store.merge_scanned_range(
+            b"c".to_vec()..b"e".to_vec(),
+            vec![make_entry("c", None), make_entry("d", None)],
+        );
+
+        assert_eq!(store.ranged_entries.len(), 1);
+        let merged = &store.ranged_entries[&b"a".to_vec()];
+        assert_eq!(merged.end, b"e".to_vec());
+        assert_eq!(keys(&merged.entries), vec!["a", "b", "c", "d"]);
+        assert!(merged.entries.iter().all(|entry| entry.value.is_none()));
+    }
+
+    #[test]
+    fn merge_overlapping_ranges_with_values_stays_single_group() {
+        let mut store = SnapshotStore::default();
+
+        store.merge_scanned_range(
+            b"a".to_vec()..b"d".to_vec(),
+            vec![
+                make_entry("a", Some("va")),
+                make_entry("b", Some("vb")),
+                make_entry("c", Some("vc")),
+            ],
+        );
+        store.merge_scanned_range(
+            b"c".to_vec()..b"f".to_vec(),
+            vec![
+                make_entry("c", Some("vc-new")),
+                make_entry("d", Some("vd")),
+                make_entry("e", Some("ve")),
+            ],
+        );
+
+        assert_eq!(store.ranged_entries.len(), 1);
+        let merged = &store.ranged_entries[&b"a".to_vec()];
+        assert_eq!(merged.end, b"f".to_vec());
+        assert_eq!(keys(&merged.entries), vec!["a", "b", "c", "d", "e"]);
+        assert_eq!(
+            merged
+                .entries
+                .iter()
+                .find(|entry| entry.key == "c")
+                .and_then(|entry| entry.value.as_deref()),
+            Some("vc-new")
+        );
+    }
+
+    #[test]
+    fn merge_keys_only_then_valued_splits_at_value_boundary() {
+        let mut store = SnapshotStore::default();
+
+        store.merge_scanned_range(
+            b"a".to_vec()..b"d".to_vec(),
+            vec![
+                make_entry("a", None),
+                make_entry("b", None),
+                make_entry("c", None),
+            ],
+        );
+        store.merge_scanned_range(
+            b"c".to_vec()..b"f".to_vec(),
+            vec![
+                make_entry("c", Some("vc")),
+                make_entry("d", Some("vd")),
+                make_entry("e", Some("ve")),
+            ],
+        );
+
+        assert_eq!(store.ranged_entries.len(), 2);
+
+        let keys_only = &store.ranged_entries[&b"a".to_vec()];
+        assert_eq!(keys_only.end, b"c".to_vec());
+        assert_eq!(keys(&keys_only.entries), vec!["a", "b"]);
+        assert!(keys_only.entries.iter().all(|entry| entry.value.is_none()));
+
+        let valued = &store.ranged_entries[&b"c".to_vec()];
+        assert_eq!(valued.end, b"f".to_vec());
+        assert_eq!(keys(&valued.entries), vec!["c", "d", "e"]);
+        assert!(valued.entries.iter().all(|entry| entry.value.is_some()));
+    }
+
+    #[test]
+    fn break_range_returns_missing_for_uncached_range() {
+        let store = SnapshotStore::default();
+
         let segments = store.break_range(&(b"a".to_vec()..b"z".to_vec()));
+
         assert_eq!(segments.len(), 1);
         assert!(
             matches!(&segments[0], CacheSegment::Missing { range } if range.start == b"a" && range.end == b"z")
@@ -491,95 +535,67 @@ mod tests {
     }
 
     #[test]
-    fn query_range_fully_cached_kv() {
+    fn break_range_returns_cached_kv_for_fully_loaded_group() {
         let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"a".to_vec(), b"b".to_vec()]);
-        store.insert_values(&[make_entry("a", "v1"), make_entry("b", "v2")]);
+
+        store.merge_scanned_range(
+            b"a".to_vec()..b"d".to_vec(),
+            vec![make_entry("a", Some("v1")), make_entry("b", Some("v2"))],
+        );
+
         let segments = store.break_range(&(b"a".to_vec()..b"d".to_vec()));
+
         assert_eq!(segments.len(), 1);
         assert!(
-            matches!(&segments[0], CacheSegment::CachedKv { entries, .. } if entries.len() == 2)
+            matches!(&segments[0], CacheSegment::CachedKv { entries, .. } if keys(entries) == vec!["a", "b"])
         );
     }
 
     #[test]
-    fn query_range_cached_keys_partial_values() {
-        let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"a".to_vec(), b"b".to_vec()]);
-        store.insert_values(&[make_entry("a", "v1")]);
-        let segments = store.break_range(&(b"a".to_vec()..b"d".to_vec()));
-        assert_eq!(segments.len(), 1);
-        assert!(matches!(&segments[0], CacheSegment::CachedKeys { keys, .. } if keys.len() == 2));
-    }
-
-    /// Query [50, 100) with cached [40, 60) keys-only and [80, 90) full KV.
-    /// Expected: CachedKeys[50,60) → Missing[60,80) → CachedKv[80,90) → Missing[90,100)
-    #[test]
-    fn query_range_mixed_segments() {
+    fn break_range_returns_mixed_segments_for_sparse_cache() {
         let mut store = SnapshotStore::default();
 
-        // [40, 60) scanned, keys only (no values)
-        let keys_40_60: Vec<Vec<u8>> = (40u8..60).map(|i| vec![i]).collect();
-        store.insert_scanned_keys(&keys_40_60);
-
-        // [80, 90) scanned, full KV
-        let keys_80_90: Vec<Vec<u8>> = (80u8..90).map(|i| vec![i]).collect();
-        store.insert_scanned_keys(&keys_80_90);
-        let entries_80_90: Vec<KvEntry> = (80u8..90)
-            .map(|i| make_entry(&String::from_utf8(vec![i]).unwrap(), "v"))
-            .collect();
-        store.insert_values(&entries_80_90);
+        store.merge_scanned_range(vec![40u8]..vec![60u8], make_ascii_entries(40..60, None));
+        store.merge_scanned_range(
+            vec![80u8]..vec![90u8],
+            make_ascii_entries(80..90, Some("v")),
+        );
 
         let segments = store.break_range(&(vec![50u8]..vec![100u8]));
 
         assert_eq!(segments.len(), 4);
 
-        // 1: CachedKeys [50, 60)
         assert!(
-            matches!(&segments[0], CacheSegment::CachedKeys { range, keys }
-                if range.start == vec![50u8] && range.end == vec![60u8] && keys.len() == 10)
+            matches!(&segments[0], CacheSegment::CachedKeys { range, entries }
+                if range.start == vec![50u8] && range.end == vec![60u8] && entries.len() == 10)
         );
-        // 2: Missing [60, 80)
         assert!(matches!(&segments[1], CacheSegment::Missing { range }
                 if range.start == vec![60u8] && range.end == vec![80u8]));
-        // 3: CachedKv [80, 90)
         assert!(
             matches!(&segments[2], CacheSegment::CachedKv { range, entries }
                 if range.start == vec![80u8] && range.end == vec![90u8] && entries.len() == 10)
         );
-        // 4: Missing [90, 100)
         assert!(matches!(&segments[3], CacheSegment::Missing { range }
                 if range.start == vec![90u8] && range.end == vec![100u8]));
     }
 
     #[test]
-    fn query_range_scanned_extends_beyond_query() {
+    fn break_range_clamps_cached_segment_to_query_bounds() {
         let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"m".to_vec()]);
-        store.insert_values(&[make_entry("m", "v")]);
 
-        // Query a sub-range
+        store.merge_scanned_range(
+            b"d".to_vec()..b"p".to_vec(),
+            vec![make_entry("d", Some("vd")), make_entry("m", Some("vm"))],
+        );
+
         let segments = store.break_range(&(b"f".to_vec()..b"p".to_vec()));
+
         assert_eq!(segments.len(), 1);
         assert!(
             matches!(&segments[0], CacheSegment::CachedKv { range, entries }
-            if range.start == b"f" && range.end == b"p" && entries.len() == 1)
+            if range.start == b"f" && range.end == b"p" && keys(entries) == vec!["m"])
         );
     }
-
-    #[test]
-    fn query_range_empty_scanned_region() {
-        let mut store = SnapshotStore::default();
-        // Scanned [a, d) but no keys exist in that range
-        store.insert_scanned_keys(&[]);
-        let segments = store.break_range(&(b"a".to_vec()..b"d".to_vec()));
-        assert_eq!(segments.len(), 1);
-        // No keys → CachedKeys with empty key list (all_have_values is vacuously true
-        // but keys_in_range is empty, so it falls to CachedKeys)
-        assert!(matches!(&segments[0], CacheSegment::CachedKeys { keys, .. } if keys.is_empty()));
-    }
-
-    // ── range_count ──────────────────────────────────────────────
 
     #[test]
     fn range_count_round_trip() {
@@ -588,23 +604,5 @@ mod tests {
         assert_eq!(store.range_count(&range), None);
         store.set_range_count(range.clone(), 42);
         assert_eq!(store.range_count(&range), Some(42));
-    }
-
-    // ── get_entry ────────────────────────────────────────────────
-
-    #[test]
-    fn get_entry_returns_none_for_key_only() {
-        let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"a".to_vec()]);
-        assert!(store.get_entry(b"a").is_none());
-    }
-
-    #[test]
-    fn get_entry_returns_value_after_insert() {
-        let mut store = SnapshotStore::default();
-        store.insert_scanned_keys(&[b"a".to_vec()]);
-        store.insert_values(&[make_entry("a", "val")]);
-        let entry = store.get_entry(b"a").unwrap();
-        assert_eq!(entry.value, "val");
     }
 }
