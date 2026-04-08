@@ -161,7 +161,7 @@ impl SnapshotStore {
             // Clamp the scanned range to [start, end)
             let seg_start = s.max(&range.start).clone();
             let seg_end = e.min(&range.end).clone();
-            if seg_start <= seg_end {
+            if seg_start < seg_end {
                 segments.push(self.build_cached_segment(seg_start.clone()..seg_end.clone()));
             }
 
@@ -222,13 +222,12 @@ impl SnapshotStore {
     fn iter_in_range(&self, range: &KeyRange) -> impl Iterator<Item = &KvEntry> {
         self.ranged_entries
             .iter()
-            .filter(|(start, g)| {
-                range.contains(*start) || g.end > range.start && g.end <= range.end
-            })
+            .filter(|(start, g)| *start < &range.end && g.end > range.start)
+            .take(1) // Only one group can overlap with the range
             .flat_map(|(_, g)| {
-                g.entries
-                    .iter()
-                    .filter(|e| range.contains(&e.key.as_bytes().to_vec()))
+                g.entries.iter().filter(|e| {
+                    (range.start.as_slice()..range.end.as_slice()).contains(&e.key.as_bytes())
+                })
             })
     }
 
@@ -337,6 +336,50 @@ impl SnapshotStore {
                     },
                 )
             }));
+    }
+}
+
+#[cfg(test)]
+mod regression_tests {
+    use super::{CacheSegment, KvEntry, SnapshotStore};
+
+    fn make_entry(key: &str, value: &str) -> KvEntry {
+        KvEntry {
+            key: key.to_string(),
+            value: Some(value.to_string()),
+            version: 1,
+            create_revision: 1,
+            mod_revision: 1,
+            lease: 0,
+        }
+    }
+
+    #[test]
+    fn break_range_keeps_entries_when_cached_group_wraps_query_range() {
+        let mut store = SnapshotStore::default();
+        store.merge_scanned_range(
+            b"a".to_vec()..b"z".to_vec(),
+            vec![
+                make_entry("b", "before"),
+                make_entry("d", "inside-1"),
+                make_entry("e", "inside-2"),
+                make_entry("y", "after"),
+            ],
+        );
+
+        let segments = store.break_range(&(b"c".to_vec()..b"f".to_vec()));
+
+        assert_eq!(segments.len(), 1);
+        match &segments[0] {
+            CacheSegment::CachedKv { entries, .. } => {
+                let keys = entries
+                    .iter()
+                    .map(|entry| entry.key.as_str())
+                    .collect::<Vec<_>>();
+                assert_eq!(keys, vec!["d", "e"]);
+            }
+            segment => panic!("expected cached kv segment, got {segment:?}"),
+        }
     }
 }
 
