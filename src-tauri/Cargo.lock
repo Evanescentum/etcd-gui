@@ -1411,6 +1411,7 @@ name = "etcd-gui"
 version = "1.0.0"
 dependencies = [
  "async_fn_traits",
+ "dunce",
  "etcd-client",
  "font-kit",
  "log",

@@ -97,8 +97,9 @@ impl AppConfig {
         app_handle
             .path()
             .app_config_dir()
-            .map(|path| path.join(Self::CONFIG_FILE_NAME).to_owned())
             .map_err(|e| e.to_string())
+            .map(|dir| dir.join(Self::CONFIG_FILE_NAME))
+            .and_then(|dir| dunce::realpath(dir).map_err(|e| e.to_string()))
     }
 
     pub fn from_file(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {

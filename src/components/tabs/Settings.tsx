@@ -82,8 +82,7 @@ const ConfigFileSection = () => {
     const load = async () => {
       setLoading(true);
       try {
-        const p = await getConfigFilePath();
-        setPath(p.startsWith("\\\\?\\") ? p.substring(4) : p);
+        setPath(await getConfigFilePath());
       } catch (e) {
         console.error("Failed to get config path", e);
       } finally {

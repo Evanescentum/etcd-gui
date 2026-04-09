@@ -38,6 +38,7 @@ reqwest = { version = "0.12", features = ["json"] }
 prometheus-parse = "0.2.5"
 time = { version = "0.3", features = ["formatting"] }
 async_fn_traits = "0.1.1"
+dunce = "1.0.5"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-window-state = "2.4.1"
