@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, RefObject } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useForm, Controller } from "react-hook-form";
 import {
   Box,
@@ -74,25 +75,15 @@ function useUnsavedChanges(
 // --- Sub-components ---
 
 const ConfigFileSection = () => {
-  const [path, setPath] = useState("");
-  const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    const load = async () => {
-      setLoading(true);
-      try {
-        setPath(await getConfigFilePath());
-      } catch (e) {
-        console.error("Failed to get config path", e);
-      } finally {
-        setLoading(false);
-      }
-    };
-    load();
-  }, []);
+  const { data: path = "", isPending } = useQuery({
+    queryKey: ["config-file-path"],
+    queryFn: getConfigFilePath,
+  });
 
   const handleCopy = async () => {
+    if (!path) return;
     await writeText(path);
     setCopied(true);
     setTimeout(() => setCopied(false), 800);
@@ -114,10 +105,10 @@ const ConfigFileSection = () => {
         <Heading size="sm" mb={2}>Configuration File Location</Heading>
         <Flex alignItems="center" gap={2}>
           <Code p={2} borderRadius="md" fontSize="sm" flex="1" overflow="hidden" whiteSpace="nowrap" textOverflow="ellipsis">
-            {loading ? "Loading..." : path}
+            {isPending ? "Loading..." : path}
           </Code>
           <Tooltip open={copied} content="Copied!" openDelay={0} immediate showArrow>
-            <IconButton aria-label="Copy config path" size="sm" onClick={handleCopy}><LuCopy /></IconButton>
+            <IconButton aria-label="Copy config path" size="sm" onClick={handleCopy} disabled={!path || isPending}><LuCopy /></IconButton>
           </Tooltip>
           <Tooltip content="Open config file" showArrow>
             <IconButton aria-label="Open config file" size="sm" onClick={handleOpen}><LuExternalLink /></IconButton>
@@ -273,11 +264,10 @@ function Settings({
   ];
   const updateScheduleCollection = createListCollection({ items: updateScheduleItems });
 
-  const [systemFonts, setSystemFonts] = useState<string[]>([]);
-
-  useEffect(() => {
-    getSystemFonts().then(setSystemFonts);
-  }, []);
+  const { data: systemFonts = [] } = useQuery({
+    queryKey: ["system-fonts"],
+    queryFn: getSystemFonts,
+  });
 
   const fontItems = [
     { label: "System", value: "" },
