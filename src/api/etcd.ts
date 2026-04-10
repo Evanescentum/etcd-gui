@@ -50,8 +50,6 @@ export type DashboardQueryEvent =
         event: 'completed';
         data: {
             total: number;
-            page: number;
-            pageSize: number;
         };
     }
     | {

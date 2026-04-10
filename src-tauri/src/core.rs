@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use etcd_client::GetOptions;
 
-pub use split_batch::{KeysOnlySplitter, KvSplitter, Splittable, execute_splittable, item_from_kv};
+pub use split_batch::{BatchFetcher, KeysOnlySplitter, KvSplitter, item_from_kv};
 
 use crate::snapshot::KvEntry;
 use crate::state::AppState;

@@ -2,11 +2,9 @@ use std::collections::{BTreeMap, HashMap};
 use std::ops::Range;
 use std::sync::Arc;
 
-use etcd_client::{SortOrder, SortTarget};
 use serde::{Deserialize, Serialize};
 
-use crate::core::{Splittable, execute_splittable, key_after};
-use crate::state::AppState;
+use crate::core::key_after;
 
 /// Represents a key-value pair from etcd
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -88,37 +86,6 @@ impl SnapshotStore {
     /// Sets the cached key count for a prefix range.
     pub fn set_range_count(&mut self, range: KeyRange, count: i64) {
         self.range_counts.insert(range, count);
-    }
-
-    /// Scans entries for `range` from etcd and merges them into the cache.
-    ///
-    /// Holds the write lock for the duration of the etcd fetch. Acceptable because
-    /// dashboard queries are sequential — there are no concurrent readers to block.
-    pub async fn scan_and_merge_entries<S>(
-        &mut self,
-        state: &mut AppState,
-        splitter: S,
-        range: KeyRange,
-        sort: (SortTarget, SortOrder),
-        revision: i64,
-    ) -> Result<Vec<KvEntry>, String>
-    where
-        S: Splittable<Output = KvEntry> + Clone,
-    {
-        let entries = execute_splittable(state, splitter, range.clone(), sort, revision).await?;
-
-        if !range.is_empty() && !entries.is_empty() {
-            log::debug!(
-                "Inserting scanned entries for range [{:?}, {:?}), len={}, all_have_values={}",
-                String::from_utf8_lossy(&range.start),
-                String::from_utf8_lossy(&range.end),
-                entries.len(),
-                entries.iter().all(|e| e.value.is_some())
-            );
-            self.merge_scanned_range(range, entries.clone());
-        }
-
-        Ok(entries)
     }
 
     /// Splits `[start, end)` into a sequence of [`CacheSegment`]s.
@@ -239,7 +206,7 @@ impl SnapshotStore {
     /// is split so that the valued portion stays valued and the rest stays
     /// keys-only. Values are never discarded: if both sides have an entry for
     /// the same key, the one carrying a value wins.
-    fn merge_scanned_range(&mut self, range: KeyRange, new_entries: Vec<KvEntry>) {
+    pub fn merge_scanned_range(&mut self, range: KeyRange, new_entries: Vec<KvEntry>) {
         // ── 1. Find bounding box and collect overlapping/adjacent ranges ──
 
         let mut merged_start = range.start.clone();

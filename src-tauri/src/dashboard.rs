@@ -8,9 +8,9 @@ use tauri::ipc::Channel;
 use tokio::sync::Mutex;
 
 use crate::core::{
-    self, CountResult, KeysOnlySplitter, KvSplitter, key_after, range_end_of_prefix,
+    self, BatchFetcher, CountResult, KeysOnlySplitter, KvSplitter, key_after, range_end_of_prefix,
 };
-use crate::snapshot::{CacheSegment, KvEntry};
+use crate::snapshot::{CacheSegment, KvEntry, SnapshotStore};
 use crate::state::AppState;
 
 const CANCELLED_ERROR: &str = "__dashboard_cancelled__";
@@ -55,8 +55,6 @@ pub enum QueryEvent {
     },
     Completed {
         total: i64,
-        page: i64,
-        page_size: i64,
     },
     Error {
         message: String,
@@ -86,10 +84,14 @@ async fn run_dashboard_query(
         query.load_mode,
         query.revision
     );
-    let current_page = query.current_page.max(1);
-    let page_size = query.page_size.max(1);
     let range = query.prefix.as_bytes().to_vec()..range_end_of_prefix(query.prefix.as_bytes());
-    let (page_start, _) = page_bounds(current_page, page_size);
+    let (page_start, page_end) = page_bounds(query.current_page, query.page_size);
+    let sort = (SortTarget::Key, SortOrder::Ascend);
+    let search_filter = |kv: &KvEntry| {
+        query.search.is_empty()
+            || kv.key.contains(&query.search)
+            || kv.value.as_ref().is_some_and(|v| v.contains(&query.search))
+    };
 
     let mut range_count = None;
     let revision = if let Some(revision) = query.revision {
@@ -137,9 +139,6 @@ async fn run_dashboard_query(
         })
         .map_err(|e| e.to_string())?;
 
-    let (_, page_end) = page_bounds(current_page, page_size);
-    let sort = (SortTarget::Key, SortOrder::Ascend);
-
     // Ask the snapshot which parts of the range are cached vs missing.
     let segments = snapshot.read().await.break_range(&range);
     log::debug!(
@@ -176,73 +175,140 @@ async fn run_dashboard_query(
 
     let mut filtered_kvs: Vec<KvEntry> = Vec::new();
     let mut page_sent = false;
-    let segment_count = segments.len();
 
-    for (i, segment) in segments.into_iter().enumerate() {
+    for segment in segments.into_iter() {
         let false = cancelled.load(Ordering::Relaxed) else {
             return Err(CANCELLED_ERROR.to_string());
         };
 
         let mut snapshot_locked = snapshot.write().await;
-        let segment_kvs = match (segment, query.load_mode) {
-            (CacheSegment::Missing { range }, LoadMode::Full) => snapshot_locked
-                .scan_and_merge_entries(state, KvSplitter, range, sort, revision)
-                .await
-                .map_err(|e| e.to_string())?,
-            (CacheSegment::Missing { range }, _) => snapshot_locked
-                .scan_and_merge_entries(state, KeysOnlySplitter, range, sort, revision)
-                .await
-                .map_err(|e| e.to_string())?,
-            (CacheSegment::CachedKeys { range, .. }, LoadMode::Full) => snapshot_locked
-                .scan_and_merge_entries(state, KvSplitter, range, sort, revision)
-                .await
-                .map_err(|e| e.to_string())?,
-            (CacheSegment::CachedKeys { entries, .. }, _) => entries,
-            (CacheSegment::CachedKv { entries, .. }, _) => entries,
-        };
 
-        // Apply search filter
-        filtered_kvs.extend(segment_kvs.into_iter().filter(|kv| {
-            query.search.is_empty()
-                || kv.key.contains(&query.search)
-                || kv.value.as_ref().is_some_and(|v| v.contains(&query.search))
-        }));
+        match (segment, query.load_mode) {
+            // Segments requiring fetch — iterate batch-by-batch so the current
+            // page can be sent as soon as enough entries are available.
+            (CacheSegment::Missing { range }, LoadMode::Full)
+            | (CacheSegment::CachedKeys { range, .. }, LoadMode::Full) => {
+                let mut fetcher = BatchFetcher::new(KvSplitter, range.clone(), sort, revision);
+                let mut all_entries = Vec::new();
 
-        // Check if we can send the current page
-        if page_sent || filtered_kvs.len() < page_end && i + 1 != segment_count {
-            continue;
+                while let Some(batch) = fetcher.next_batch(state).await? {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return Err(CANCELLED_ERROR.to_string());
+                    }
+
+                    all_entries.extend(batch.clone());
+                    filtered_kvs.extend(batch.into_iter().filter(&search_filter));
+
+                    if !page_sent && filtered_kvs.len() >= page_end {
+                        send_page(
+                            &filtered_kvs[page_start..page_end],
+                            &mut snapshot_locked,
+                            state,
+                            sort,
+                            revision,
+                            on_event,
+                        )
+                        .await?;
+                        page_sent = true;
+                    }
+                }
+
+                if !range.is_empty() && !all_entries.is_empty() {
+                    snapshot_locked.merge_scanned_range(range, all_entries);
+                }
+            }
+            (CacheSegment::Missing { range }, _) => {
+                let mut fetcher =
+                    BatchFetcher::new(KeysOnlySplitter, range.clone(), sort, revision);
+                let mut all_entries = Vec::new();
+
+                while let Some(batch) = fetcher.next_batch(state).await? {
+                    if cancelled.load(Ordering::Relaxed) {
+                        return Err(CANCELLED_ERROR.to_string());
+                    }
+
+                    all_entries.extend(batch.clone());
+                    filtered_kvs.extend(batch.into_iter().filter(&search_filter));
+
+                    if !page_sent && filtered_kvs.len() >= page_end {
+                        send_page(
+                            &filtered_kvs[page_start..page_end],
+                            &mut snapshot_locked,
+                            state,
+                            sort,
+                            revision,
+                            on_event,
+                        )
+                        .await?;
+                        page_sent = true;
+                    }
+                }
+
+                if !range.is_empty() && !all_entries.is_empty() {
+                    snapshot_locked.merge_scanned_range(range, all_entries);
+                }
+            }
+            // Cached segments — use directly.
+            (CacheSegment::CachedKeys { entries, .. }, _)
+            | (CacheSegment::CachedKv { entries, .. }, _) => {
+                filtered_kvs.extend(entries.into_iter().filter(&search_filter));
+            }
         }
-        let end = page_end.min(filtered_kvs.len());
+    }
+
+    // Scan finished before gathering enough entries to fill the page, send what we have.
+    if !page_sent {
+        let end = filtered_kvs.len().min(page_end);
         let start = page_start.min(end);
-        let page_kvs = &filtered_kvs[start..end];
-
-        let page_kvs = if page_kvs.iter().any(|kv| kv.value.is_none()) {
-            // Fetch values for the current page if any of the entries are missing values
-            let range = page_kvs[0].key.as_bytes().to_owned()
-                ..key_after(page_kvs[page_kvs.len() - 1].key.as_bytes());
-            snapshot_locked
-                .scan_and_merge_entries(state, KvSplitter, range, sort, revision)
-                .await
-                .map_err(|e| e.to_string())?
-        } else {
-            page_kvs.to_vec()
-        };
-
-        on_event
-            .send(QueryEvent::PageChunk { items: page_kvs })
-            .map_err(|e| e.to_string())?;
-        page_sent = true;
+        let mut snapshot_locked = snapshot.write().await;
+        send_page(
+            &filtered_kvs[start..end],
+            &mut snapshot_locked,
+            state,
+            sort,
+            revision,
+            on_event,
+        )
+        .await?;
     }
 
     on_event
         .send(QueryEvent::Completed {
             total: filtered_kvs.len() as i64,
-            page: current_page,
-            page_size,
         })
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+/// Fetches missing values if needed, updates the snapshot,
+/// and sends a [`QueryEvent::PageChunk`].
+async fn send_page(
+    paged_kvs: &[KvEntry],
+    snapshot: &mut SnapshotStore,
+    state: &mut AppState,
+    sort: (SortTarget, SortOrder),
+    revision: i64,
+    on_event: &Channel<QueryEvent>,
+) -> Result<(), String> {
+    let page_kvs = if paged_kvs.iter().any(|kv| kv.value.is_none()) {
+        // Fetch values for page entries that are missing them.
+        let range = paged_kvs[0].key.as_bytes().to_owned()
+            ..key_after(paged_kvs[paged_kvs.len() - 1].key.as_bytes());
+        let mut fetcher = BatchFetcher::new(KvSplitter, range.clone(), sort, revision);
+        let mut fetched_kvs = Vec::new();
+        while let Some(batch) = fetcher.next_batch(state).await? {
+            fetched_kvs.extend(batch);
+        }
+        snapshot.merge_scanned_range(range, fetched_kvs.clone());
+        fetched_kvs
+    } else {
+        paged_kvs.to_vec()
+    };
+
+    on_event
+        .send(QueryEvent::PageChunk { items: page_kvs })
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
