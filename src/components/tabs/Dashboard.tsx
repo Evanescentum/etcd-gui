@@ -13,6 +13,7 @@ import {
   Text,
   VStack,
   Badge,
+  Progress,
   Spacer,
   Pagination,
   Table,
@@ -104,6 +105,7 @@ function Dashboard({ configLoading }: DashboardProps) {
   const {
     data,
     total,
+    progress,
     loadError,
     isPageLoading,
     isSourceLoading,
@@ -151,6 +153,7 @@ function Dashboard({ configLoading }: DashboardProps) {
 
   const showTyping = keyPrefixInput !== committedKeyPrefix;
   const showUnknownTotal = total === null && isTotalLoading;
+  const showScanProgress = !loadError && isStreaming && progress !== null && progress.sourceTotal > 0;
 
   return (
     <Flex direction="column" height="100vh">
@@ -387,14 +390,35 @@ function Dashboard({ configLoading }: DashboardProps) {
           <Badge colorPalette="blue">Search: "{searchQuery}"</Badge>
         )}
         <Spacer />
-        <ConnectionStatus
-          loadError={loadError}
-          showTyping={showTyping}
-          isSourceLoading={isSourceLoading}
-          isPageRefreshing={isPageRefreshing}
-          isTotalLoading={isTotalLoading}
-          isStreaming={isStreaming}
-        />
+        <HStack gap={3} align="center">
+          {showScanProgress && (
+            <HStack gap={2} align="center">
+              <Progress.Root
+                value={progress.scanned}
+                max={Math.max(progress.sourceTotal, 1)}
+                size="xs"
+                width="7rem"
+                colorPalette="gray"
+                variant="subtle"
+              >
+                <Progress.Track>
+                  <Progress.Range />
+                </Progress.Track>
+              </Progress.Root>
+              <Text fontSize="x-small" color="fg.muted" whiteSpace="nowrap">
+                {progress.scanned.toLocaleString()} / {progress.sourceTotal.toLocaleString()}
+              </Text>
+            </HStack>
+          )}
+          <ConnectionStatus
+            loadError={loadError}
+            showTyping={showTyping}
+            isSourceLoading={isSourceLoading}
+            isPageRefreshing={isPageRefreshing}
+            isTotalLoading={isTotalLoading}
+            isStreaming={isStreaming}
+          />
+        </HStack>
       </HStack>
 
       {/* Add Key Dialog */}

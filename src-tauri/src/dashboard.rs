@@ -44,6 +44,7 @@ pub enum QueryEvent {
     Started {
         resolved_revision: i64,
         total: Option<i64>,
+        source_total: i64,
     },
     PageChunk {
         items: Vec<KvEntry>,
@@ -51,7 +52,7 @@ pub enum QueryEvent {
     Progress {
         scanned: i64,
         matched: i64,
-        total: Option<i64>,
+        source_total: i64,
     },
     Completed {
         total: i64,
@@ -65,6 +66,40 @@ fn page_bounds(current_page: i64, page_size: i64) -> (usize, usize) {
     let page_start = ((current_page.max(1) - 1) * page_size.max(1)) as usize;
     let page_end = page_start + page_size.max(1) as usize;
     (page_start, page_end)
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct QueryProgressState {
+    scanned: i64,
+    matched: i64,
+    source_total: i64,
+}
+
+impl QueryProgressState {
+    fn new(source_total: i64) -> Self {
+        Self {
+            source_total,
+            ..Self::default()
+        }
+    }
+
+    fn record_entries<F>(&mut self, entries: &[KvEntry], search_filter: &F)
+    where
+        F: Fn(&KvEntry) -> bool,
+    {
+        self.scanned += entries.len() as i64;
+        self.matched += entries.iter().filter(|entry| search_filter(entry)).count() as i64;
+    }
+
+    fn emit(&self, on_event: &Channel<QueryEvent>) -> Result<(), String> {
+        on_event
+            .send(QueryEvent::Progress {
+                scanned: self.scanned.min(self.source_total),
+                matched: self.matched,
+                source_total: self.source_total,
+            })
+            .map_err(|e| e.to_string())
+    }
 }
 
 async fn run_dashboard_query(
@@ -136,6 +171,7 @@ async fn run_dashboard_query(
         .send(QueryEvent::Started {
             resolved_revision: revision,
             total: query.search.is_empty().then_some(range_count),
+            source_total: range_count,
         })
         .map_err(|e| e.to_string())?;
 
@@ -175,6 +211,7 @@ async fn run_dashboard_query(
 
     let mut filtered_kvs: Vec<KvEntry> = Vec::new();
     let mut page_sent = false;
+    let mut progress = QueryProgressState::new(range_count);
 
     for segment in segments.into_iter() {
         let false = cancelled.load(Ordering::Relaxed) else {
@@ -196,6 +233,8 @@ async fn run_dashboard_query(
                         return Err(CANCELLED_ERROR.to_string());
                     }
 
+                    progress.record_entries(&batch, &search_filter);
+                    progress.emit(on_event)?;
                     all_entries.extend(batch.clone());
                     filtered_kvs.extend(batch.into_iter().filter(&search_filter));
 
@@ -227,6 +266,8 @@ async fn run_dashboard_query(
                         return Err(CANCELLED_ERROR.to_string());
                     }
 
+                    progress.record_entries(&batch, &search_filter);
+                    progress.emit(on_event)?;
                     all_entries.extend(batch.clone());
                     filtered_kvs.extend(batch.into_iter().filter(&search_filter));
 
@@ -251,6 +292,8 @@ async fn run_dashboard_query(
             // Cached segments — use directly.
             (CacheSegment::CachedKeys { entries, .. }, _)
             | (CacheSegment::CachedKv { entries, .. }, _) => {
+                progress.record_entries(&entries, &search_filter);
+                progress.emit(on_event)?;
                 filtered_kvs.extend(entries.into_iter().filter(&search_filter));
             }
         }
@@ -361,11 +404,58 @@ pub async fn start_dashboard_query(
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
+    use super::QueryEvent;
     use super::page_bounds;
 
     #[test]
     fn page_bounds_are_one_based() {
         assert_eq!(page_bounds(1, 20), (0, 20));
         assert_eq!(page_bounds(3, 20), (40, 60));
+    }
+
+    #[test]
+    fn started_event_serializes_source_total_alongside_exact_total() {
+        let payload = serde_json::to_value(QueryEvent::Started {
+            resolved_revision: 42,
+            total: Some(7),
+            source_total: 9,
+        })
+        .expect("started event should serialize");
+
+        assert_eq!(
+            payload,
+            json!({
+                "event": "started",
+                "data": {
+                    "resolvedRevision": 42,
+                    "total": 7,
+                    "sourceTotal": 9,
+                }
+            })
+        );
+    }
+
+    #[test]
+    fn progress_event_serializes_source_total_instead_of_reusing_total() {
+        let payload = serde_json::to_value(QueryEvent::Progress {
+            scanned: 4,
+            matched: 2,
+            source_total: 9,
+        })
+        .expect("progress event should serialize");
+
+        assert_eq!(
+            payload,
+            json!({
+                "event": "progress",
+                "data": {
+                    "scanned": 4,
+                    "matched": 2,
+                    "sourceTotal": 9,
+                }
+            })
+        );
     }
 }

@@ -24,12 +24,19 @@ export interface DashboardQueryRequest {
     revision: number | null;
 }
 
+export interface DashboardQueryProgress {
+    scanned: number;
+    matched: number;
+    sourceTotal: number;
+}
+
 export type DashboardQueryEvent =
     | {
         event: 'started';
         data: {
             resolvedRevision: number;
             total: number | null;
+            sourceTotal: number;
         };
     }
     | {
@@ -40,11 +47,7 @@ export type DashboardQueryEvent =
     }
     | {
         event: 'progress';
-        data: {
-            scanned: number;
-            matched: number;
-            total: number | null;
-        };
+        data: DashboardQueryProgress;
     }
     | {
         event: 'completed';

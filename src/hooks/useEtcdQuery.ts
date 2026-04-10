@@ -2,6 +2,7 @@ import { useQuery, UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     EtcdItem,
+    type DashboardQueryProgress,
     type DashboardQueryLoadMode,
     getClusterInfo,
     type ClusterInfo,
@@ -19,6 +20,7 @@ export const etcdQueryKeys = {
 export interface DashboardQueryResult {
     data: EtcdItem[];
     total: number | null;
+    progress: DashboardQueryProgress | null;
     loadError: string | null;
     isPageLoading: boolean;
     isSourceLoading: boolean;
@@ -35,6 +37,7 @@ interface DashboardViewState {
     sourceKey: string;
     items: EtcdItem[];
     total: number | null;
+    progress: DashboardQueryProgress | null;
     hasExactTotal: boolean;
     pageReady: boolean;
     isComplete: boolean;
@@ -51,6 +54,7 @@ function createEmptyDashboardView(sourceKey = ""): DashboardViewState {
         sourceKey,
         items: [],
         total: null,
+        progress: null,
         hasExactTotal: false,
         pageReady: false,
         isComplete: false,
@@ -138,6 +142,11 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
                     ...current,
                     sourceKey,
                     total: sameSource && data.total === null ? current.total : data.total,
+                    progress: {
+                        scanned: 0,
+                        matched: 0,
+                        sourceTotal: data.sourceTotal,
+                    },
                     hasExactTotal: sameSource && data.total === null ? current.hasExactTotal : data.total !== null,
                     loadError: null,
                 }));
@@ -157,15 +166,14 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
                 }));
             },
             onProgress: ({ data }) => {
-                if (activeRequestIdRef.current !== requestId || data.total === null) {
+                if (activeRequestIdRef.current !== requestId) {
                     return;
                 }
 
                 setView((current) => ({
                     ...current,
                     sourceKey,
-                    total: data.total,
-                    hasExactTotal: true,
+                    progress: data,
                 }));
             },
             onCompleted: ({ data }) => {
@@ -177,6 +185,11 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
                     ...current,
                     sourceKey,
                     total: data.total,
+                    progress: current.progress ? {
+                        ...current.progress,
+                        scanned: current.progress.sourceTotal,
+                        matched: data.total,
+                    } : current.progress,
                     hasExactTotal: true,
                     pageReady: true,
                     isComplete: true,
@@ -254,6 +267,7 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
     return {
         data: view.pageReady ? view.items : [],
         total: view.total,
+        progress: view.progress,
         loadError: view.loadError,
         isPageLoading,
         isSourceLoading,
