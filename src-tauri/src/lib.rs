@@ -76,7 +76,7 @@ async fn run_update_check_and_emit(app_handle: &tauri::AppHandle, channel: confi
 }
 
 async fn update_check_worker(app_handle: tauri::AppHandle, worker_control: Arc<Notify>) {
-    let startup_delay = std::time::Duration::from_secs(30);
+    let startup_delay = std::time::Duration::from_secs(5);
     let mut first_check_pending = true;
 
     loop {
