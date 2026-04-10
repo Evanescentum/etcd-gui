@@ -112,6 +112,7 @@ function Dashboard({ configLoading }: DashboardProps) {
     isPageRefreshing,
     isStreaming,
     isTotalLoading,
+    revision,
   } = queryResult;
 
   useEffect(() => {
@@ -380,10 +381,13 @@ function Dashboard({ configLoading }: DashboardProps) {
       </Flex>
 
       <HStack margin={2}>
-        <Skeleton loading={isPageLoading && data.length === 0} display="inline-block" minW="20px">
+        <Skeleton loading={isPageLoading && data.length === 0}>
           <Badge fontSize="x-small">{!loadError && "Connected to: "}{appConfig?.current_profile}</Badge>
         </Skeleton>
-        <Skeleton loading={showUnknownTotal} display="inline-block" minW="20px">
+        <Skeleton loading={isPageLoading || !revision}>
+          <Badge>Rev: {revision}</Badge>
+        </Skeleton>
+        <Skeleton loading={showUnknownTotal}>
           <Badge>{total === null ? "Counting matches..." : `${total} keys found`}</Badge>
         </Skeleton>
         {searchQuery && (

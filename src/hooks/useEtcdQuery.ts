@@ -27,6 +27,7 @@ export interface DashboardQueryResult {
     isPageRefreshing: boolean;
     isStreaming: boolean;
     isTotalLoading: boolean;
+    revision: number | null;
     /**
      * Drops the pinned revision for the current source and reloads from the latest revision.
      */
@@ -84,6 +85,7 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
     const [isFetching, setIsFetching] = useState(false);
     const [reloadNonce, setReloadNonce] = useState(0);
     const [pageRefreshRequestNonce, setPageRefreshRequestNonce] = useState(0);
+    const [revision, setRevision] = useState<number | null>(null);
     const activeRequestIdRef = useRef("");
     // The dashboard stays on a resolved revision until the caller explicitly asks for latest data.
     const pinnedRevisionsRef = useRef<Record<string, number>>({});
@@ -137,6 +139,7 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
                 }
 
                 pinnedRevisionsRef.current[revisionSourceKey] = data.resolvedRevision;
+                setRevision(data.resolvedRevision);
 
                 setView((current) => ({
                     ...current,
@@ -274,8 +277,10 @@ export function useDashboardItemsQuery({ enabled, keyPrefix, currentProfileName,
         isPageRefreshing,
         isStreaming: isFetching && !view.isComplete,
         isTotalLoading: !view.hasExactTotal && !!searchQuery && !view.isComplete,
+        revision,
         refetch: async () => {
             delete pinnedRevisionsRef.current[revisionSourceKey];
+            setRevision(null);
             setReloadNonce((current) => current + 1);
         },
     };
