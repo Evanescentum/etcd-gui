@@ -1,5 +1,5 @@
 mod client;
-mod config;
+pub mod config;
 mod core;
 mod dashboard;
 mod metrics;
