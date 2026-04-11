@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo, memo, useDeferredValue, useSyncExternalStore } from "react";
+import { useState, useRef, useMemo, memo, useDeferredValue, useSyncExternalStore } from "react";
 import {
     Box,
     Heading,
@@ -19,6 +19,7 @@ import {
     Portal,
 } from "@chakra-ui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { useStickToBottom } from "use-stick-to-bottom";
 import { codeInputProps } from "@/utils/inputProps";
 import { LuTriangleAlert, LuPause, LuPlay, LuTrash2, LuArrowDown, LuBrackets, LuSearch, LuFolderOpen } from "react-icons/lu";
 import { useDebounce } from "use-debounce";
@@ -91,11 +92,13 @@ function Logs() {
     const { logs, isWatching, error } = useSyncExternalStore(logStore.subscribe, logStore.getSnapshot);
     const [filterQuery, setFilterQuery] = useState("");
     const [filterLevel, setFilterLevel] = useState("ALL");
-    const [isAtBottom, setIsAtBottom] = useState(true);
     const [debouncedFilterQuery] = useDebounce(filterQuery, 300);
     const viewportRef = useRef<HTMLDivElement | null>(null);
-    const isAtBottomRef = useRef(true);
     const deferredLogs = useDeferredValue(logs);
+    const { scrollRef, contentRef, isAtBottom, scrollToBottom } = useStickToBottom({
+        initial: "instant",
+        resize: "instant",
+    });
 
     const levelCollection = createListCollection({
         items: [
@@ -133,28 +136,6 @@ function Logs() {
         getItemKey: (index) => filteredLogs[index]?.id ?? index,
     });
 
-    const handleViewportScroll = (event: React.UIEvent<HTMLDivElement>) => {
-        const viewport = event.currentTarget;
-        const nextIsAtBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight < 24;
-        isAtBottomRef.current = nextIsAtBottom;
-        setIsAtBottom((current) => (current === nextIsAtBottom ? current : nextIsAtBottom));
-    };
-
-    const scrollToBottom = () => {
-        if (filteredLogs.length === 0) return;
-        rowVirtualizer.scrollToIndex(filteredLogs.length - 1, { align: "end" });
-    };
-
-    useEffect(() => {
-        if (!isAtBottomRef.current || filteredLogs.length === 0) return;
-
-        const frameId = requestAnimationFrame(() => {
-            scrollToBottom();
-        });
-
-        return () => cancelAnimationFrame(frameId);
-    }, [filteredLogs.length]);
-
     const handleTogglePause = () => {
         if (isWatching) {
             logStore.stopWatching();
@@ -176,8 +157,6 @@ function Logs() {
     };
 
     const handleClearLogs = () => {
-        isAtBottomRef.current = true;
-        setIsAtBottom(true);
         logStore.clear();
     };
 
@@ -291,14 +270,24 @@ function Logs() {
             <Box flex="1" overflow="hidden" position="relative" bg="bg.subtle">
                 <ScrollArea.Root h="100%" w="100%" variant="always">
                     <ScrollArea.Viewport
-                        ref={viewportRef}
+                        ref={(node: HTMLDivElement | null) => {
+                            viewportRef.current = node;
+                            scrollRef(node);
+                        }}
                         h="100%"
                         w="100%"
-                        onScroll={handleViewportScroll}
                         style={{ contain: "strict", overflowAnchor: "none" }}
                     >
                         <ScrollArea.Content>
-                            <Box p={4} color="fg.default" fontFamily="mono" fontSize="sm">
+                            <Box
+                                ref={(node: HTMLDivElement | null) => {
+                                    contentRef(node);
+                                }}
+                                p={4}
+                                color="fg.default"
+                                fontFamily="mono"
+                                fontSize="sm"
+                            >
                                 {filteredLogs.length === 0 ? (
                                     logs.length === 0 ? emptyState() : (
                                         <Flex direction="column" align="center" justify="center" py={10} color="fg.muted">
@@ -337,7 +326,7 @@ function Logs() {
 
                 {!isAtBottom && (
                     <Box position="absolute" bottom="4" right="4" zIndex="overlay">
-                        <IconButton size="sm" onClick={scrollToBottom} rounded="full">
+                        <IconButton size="sm" onClick={() => void scrollToBottom("instant")} rounded="full">
                             <LuArrowDown />
                         </IconButton>
                     </Box>
