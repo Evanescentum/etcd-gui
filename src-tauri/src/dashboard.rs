@@ -143,14 +143,12 @@ async fn run_dashboard_query(
     let snapshot = state
         .query_manager
         .snapshot_for(profile_fingerprint, revision);
+    let mut snapshot = snapshot.lock().await;
     let range_count = if let Some(range_count) = range_count {
-        snapshot
-            .write()
-            .await
-            .set_range_count(range.clone(), range_count);
+        snapshot.set_range_count(range.clone(), range_count);
         range_count
     } else {
-        range_count = snapshot.read().await.range_count(&range);
+        range_count = snapshot.range_count(&range);
         if let Some(range_count) = range_count {
             range_count
         } else {
@@ -158,10 +156,7 @@ async fn run_dashboard_query(
             let count = core::count_keys(range.clone(), Some(revision), state)
                 .await
                 .map_err(|e| e.to_string())?;
-            snapshot
-                .write()
-                .await
-                .set_range_count(range.clone(), count.total);
+            snapshot.set_range_count(range.clone(), count.total);
             count.total
         }
     };
@@ -176,7 +171,7 @@ async fn run_dashboard_query(
         .map_err(|e| e.to_string())?;
 
     // Ask the snapshot which parts of the range are cached vs missing.
-    let segments = snapshot.read().await.break_range(&range);
+    let segments = snapshot.break_range(&range);
     log::debug!(
         "Dashboard query range broken into {} segments",
         segments.len()
@@ -218,8 +213,6 @@ async fn run_dashboard_query(
             return Err(CANCELLED_ERROR.to_string());
         };
 
-        let mut snapshot_locked = snapshot.write().await;
-
         match (segment, query.load_mode) {
             // Segments requiring fetch — iterate batch-by-batch so the current
             // page can be sent as soon as enough entries are available.
@@ -241,7 +234,7 @@ async fn run_dashboard_query(
                     if !page_sent && filtered_kvs.len() >= page_end {
                         send_page(
                             &filtered_kvs[page_start..page_end],
-                            &mut snapshot_locked,
+                            &mut snapshot,
                             state,
                             sort,
                             revision,
@@ -253,7 +246,7 @@ async fn run_dashboard_query(
                 }
 
                 if !range.is_empty() && !all_entries.is_empty() {
-                    snapshot_locked.merge_scanned_range(range, all_entries);
+                    snapshot.merge_scanned_range(range, all_entries);
                 }
             }
             (CacheSegment::Missing { range }, _) => {
@@ -274,7 +267,7 @@ async fn run_dashboard_query(
                     if !page_sent && filtered_kvs.len() >= page_end {
                         send_page(
                             &filtered_kvs[page_start..page_end],
-                            &mut snapshot_locked,
+                            &mut snapshot,
                             state,
                             sort,
                             revision,
@@ -286,7 +279,7 @@ async fn run_dashboard_query(
                 }
 
                 if !range.is_empty() && !all_entries.is_empty() {
-                    snapshot_locked.merge_scanned_range(range, all_entries);
+                    snapshot.merge_scanned_range(range, all_entries);
                 }
             }
             // Cached segments — use directly.
@@ -303,10 +296,9 @@ async fn run_dashboard_query(
     if !page_sent {
         let end = filtered_kvs.len().min(page_end);
         let start = page_start.min(end);
-        let mut snapshot_locked = snapshot.write().await;
         send_page(
             &filtered_kvs[start..end],
-            &mut snapshot_locked,
+            &mut snapshot,
             state,
             sort,
             revision,

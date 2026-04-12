@@ -24,7 +24,7 @@ pub struct SnapshotKey {
 }
 
 pub type KeyRange = Range<Vec<u8>>;
-pub type SharedSnapshot = Arc<tokio::sync::RwLock<SnapshotStore>>;
+pub type SharedSnapshot = Arc<tokio::sync::Mutex<SnapshotStore>>;
 
 /// A cached range group stored in [`SnapshotStore`]'s `ranged_entries` map.
 ///

@@ -34,7 +34,7 @@ impl QueryManager {
                 profile_fingerprint,
                 revision,
             })
-            .or_insert_with(|| Arc::new(tokio::sync::RwLock::new(SnapshotStore::default())))
+            .or_insert_with(|| Arc::new(tokio::sync::Mutex::new(SnapshotStore::default())))
             .clone()
     }
 }
