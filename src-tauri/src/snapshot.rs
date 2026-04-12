@@ -1,10 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
-use std::ops::Range;
+use std::ops::{Bound::Excluded, Range};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-
-use crate::core::key_after;
 
 /// Represents a key-value pair from etcd
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -114,7 +112,7 @@ impl SnapshotStore {
         let mut segments = Vec::new();
         let mut cursor = range.start.clone();
 
-        for (s, e) in self.overlapping_scanned_ranges(range) {
+        for (s, group) in self.overlapping_scanned_groups(range) {
             if cursor < *s {
                 // There's a gap between cursor and the next scanned range:
                 //     [-- Missing)[-- Cached ---) ...
@@ -127,9 +125,28 @@ impl SnapshotStore {
 
             // Clamp the scanned range to [start, end)
             let seg_start = s.max(&range.start).clone();
-            let seg_end = e.min(&range.end).clone();
+            let seg_end = std::cmp::min(&group.end, &range.end).clone();
             if seg_start < seg_end {
-                segments.push(self.build_cached_segment(seg_start.clone()..seg_end.clone()));
+                let entries_in_range: Vec<_> = group
+                    .entries
+                    .iter()
+                    .filter(|entry| (&seg_start[..]..&seg_end[..]).contains(&entry.key.as_bytes()))
+                    .cloned()
+                    .collect();
+
+                segments.push(
+                    if entries_in_range.iter().all(|entry| entry.value.is_some()) {
+                        CacheSegment::CachedKv {
+                            range: seg_start..seg_end.clone(),
+                            entries: entries_in_range,
+                        }
+                    } else {
+                        CacheSegment::CachedKeys {
+                            range: seg_start..seg_end.clone(),
+                            entries: entries_in_range,
+                        }
+                    },
+                );
             }
 
             cursor = seg_end;
@@ -146,56 +163,24 @@ impl SnapshotStore {
     }
 
     /// Iterates scanned ranges that overlap with `[start, end)`, in order.
-    fn overlapping_scanned_ranges<'a>(
+    fn overlapping_scanned_groups<'a>(
         &'a self,
         Range { start, end }: &KeyRange,
-    ) -> impl Iterator<Item = (&'a Vec<u8>, &'a Vec<u8>)> {
+    ) -> impl Iterator<Item = (&'a Vec<u8>, &'a EntryGroup)> {
         // Find the first candidate: the last range whose start <= `start`.
         // It might extend into [start, end)
         let left_candidate = self
             .ranged_entries
             .range::<Vec<_>, _>(..=start)
             .next_back()
-            .filter(|(_, g)| g.end > *start)
-            .map(|(s, g)| (s, &g.end));
+            .filter(|(_, g)| g.end > *start);
 
         // All ranges whose start is in (start, end) necessarily overlaps.
         let middle = self
             .ranged_entries
-            .range::<Vec<_>, _>(&key_after(start)..end)
-            .map(|(s, g)| (s, &g.end));
+            .range::<[u8], _>((Excluded(start.as_slice()), Excluded(end.as_slice())));
 
         left_candidate.into_iter().chain(middle)
-    }
-
-    /// Builds a `CachedKv` or `CachedKeys` segment for a range known to be scanned.
-    fn build_cached_segment(&self, range: KeyRange) -> CacheSegment {
-        let entries_in_range: Vec<_> = self.iter_in_range(&range).cloned().collect();
-
-        if entries_in_range.iter().all(|e| e.value.is_some()) {
-            CacheSegment::CachedKv {
-                range,
-                entries: entries_in_range,
-            }
-        } else {
-            CacheSegment::CachedKeys {
-                range,
-                entries: entries_in_range,
-            }
-        }
-    }
-
-    /// Retrieves the cached entry for the specified key range.
-    fn iter_in_range(&self, range: &KeyRange) -> impl Iterator<Item = &KvEntry> {
-        self.ranged_entries
-            .iter()
-            .filter(|(start, g)| *start < &range.end && g.end > range.start)
-            .take(1) // Only one group can overlap with the range
-            .flat_map(|(_, g)| {
-                g.entries.iter().filter(|e| {
-                    (range.start.as_slice()..range.end.as_slice()).contains(&e.key.as_bytes())
-                })
-            })
     }
 
     /// Inserts `[new_start, new_end)` into `ranged_entries`, merging with any
@@ -222,8 +207,8 @@ impl SnapshotStore {
         }
 
         let removed = to_remove
-            .iter()
-            .filter_map(|k| self.ranged_entries.remove(k).map(|g| (k.clone(), g)))
+            .into_iter()
+            .filter_map(|start| self.ranged_entries.remove_entry(&start))
             .collect::<Vec<_>>();
 
         // ── 2. Determine valued sub-intervals ─────────────────────────
@@ -260,25 +245,28 @@ impl SnapshotStore {
 
         // ── 3. Build unified entry map (valued wins over keys-only) ───
 
-        let mut all_entries: BTreeMap<Vec<u8>, KvEntry> = BTreeMap::new();
-        for (_, g) in removed {
-            for entry in g.entries {
-                all_entries.insert(entry.key.as_bytes().to_vec(), entry);
-            }
-        }
-        for entry in new_entries {
-            match all_entries.entry(entry.key.as_bytes().to_vec()) {
-                std::collections::btree_map::Entry::Vacant(slot) => {
-                    slot.insert(entry);
-                }
-                std::collections::btree_map::Entry::Occupied(mut slot) => {
-                    // Overwrite when the new entry has a value, or the existing one doesn't.
-                    if entry.value.is_some() || slot.get().value.is_none() {
-                        slot.insert(entry);
+        let mut all_entries = removed
+            .into_iter()
+            .flat_map(|(_, group)| group.entries)
+            .chain(new_entries)
+            .collect::<Vec<_>>();
+        all_entries.sort_by(|left, right| left.key.cmp(&right.key));
+
+        let all_entries =
+            all_entries
+                .into_iter()
+                .fold(Vec::<KvEntry>::new(), |mut deduped, entry| {
+                    match deduped.last_mut() {
+                        Some(existing) if existing.key == entry.key => {
+                            // Overwrite when the new entry has a value, or the existing one doesn't.
+                            if entry.value.is_some() || existing.value.is_none() {
+                                *existing = entry;
+                            }
+                        }
+                        _ => deduped.push(entry),
                     }
-                }
-            }
-        }
+                    deduped
+                });
 
         // ── 4. Re-insert, splitting only at valued / keys-only boundaries ──
 
@@ -290,16 +278,21 @@ impl SnapshotStore {
         split_points.sort();
         split_points.dedup();
 
+        let mut all_entries = all_entries.into_iter().peekable();
         self.ranged_entries
             .extend(split_points.array_windows().map(|[left, right]| {
+                let mut group_entries = Vec::new();
+                while let Some(entry) = all_entries.next_if(|entry| {
+                    (left.as_slice()..right.as_slice()).contains(&entry.key.as_bytes())
+                }) {
+                    group_entries.push(entry);
+                }
+
                 (
                     left.clone(),
                     EntryGroup {
                         end: right.clone(),
-                        entries: all_entries
-                            .range::<Vec<_>, _>(left..right)
-                            .map(|(_, entry)| entry.clone())
-                            .collect(),
+                        entries: group_entries,
                     },
                 )
             }));
