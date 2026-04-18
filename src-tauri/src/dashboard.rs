@@ -1,11 +1,9 @@
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use etcd_client::{SortOrder, SortTarget};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 use tauri::ipc::Channel;
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 use crate::core::{
     self, BatchFetcher, CountResult, KeysOnlySplitter, KvSplitter, key_after, range_end_of_prefix,
@@ -107,7 +105,7 @@ async fn run_dashboard_query(
     profile_fingerprint: u64,
     query: &QueryRequest,
     on_event: &Channel<QueryEvent>,
-    cancelled: &Arc<AtomicBool>,
+    cancelled: CancellationToken,
 ) -> Result<(), String> {
     log::debug!(
         "Running dashboard query for profile {} with prefix='{}', search='{}', page={}, page_size={}, load_mode={:?}, revision={:?}",
@@ -209,7 +207,7 @@ async fn run_dashboard_query(
     let mut progress = QueryProgressState::new(range_count);
 
     for segment in segments.into_iter() {
-        let false = cancelled.load(Ordering::Relaxed) else {
+        let false = cancelled.is_cancelled() else {
             return Err(CANCELLED_ERROR.to_string());
         };
 
@@ -222,7 +220,7 @@ async fn run_dashboard_query(
                 let mut all_entries = Vec::new();
 
                 while let Some(batch) = fetcher.next_batch(state).await? {
-                    if cancelled.load(Ordering::Relaxed) {
+                    if cancelled.is_cancelled() {
                         return Err(CANCELLED_ERROR.to_string());
                     }
 
@@ -255,7 +253,7 @@ async fn run_dashboard_query(
                 let mut all_entries = Vec::new();
 
                 while let Some(batch) = fetcher.next_batch(state).await? {
-                    if cancelled.load(Ordering::Relaxed) {
+                    if cancelled.is_cancelled() {
                         return Err(CANCELLED_ERROR.to_string());
                     }
 
@@ -382,7 +380,7 @@ pub async fn start_dashboard_query(
         profile_fingerprint,
         &query,
         &on_event,
-        &cancelled,
+        cancelled,
     )
     .await
     {

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use tokio_util::sync::CancellationToken;
 
 use crate::snapshot::{SharedSnapshot, SnapshotKey, SnapshotStore};
 
@@ -11,18 +11,18 @@ use crate::snapshot::{SharedSnapshot, SnapshotKey, SnapshotStore};
 /// the backend query pipeline for the exact profile fingerprint and revision.
 #[derive(Default)]
 pub struct QueryManager {
-    active_dashboard_query: Option<Arc<AtomicBool>>,
+    active_dashboard_query: Option<CancellationToken>,
     snapshots: HashMap<SnapshotKey, SharedSnapshot>,
 }
 
 impl QueryManager {
     /// Starts a new dashboard query and cancels any previous active query.
-    pub fn begin_dashboard_query(&mut self) -> Arc<AtomicBool> {
+    pub fn begin_dashboard_query(&mut self) -> CancellationToken {
         if let Some(active_query) = self.active_dashboard_query.take() {
-            active_query.store(true, Ordering::Relaxed);
+            active_query.cancel();
         }
 
-        let cancelled = Arc::new(AtomicBool::new(false));
+        let cancelled = CancellationToken::new();
         self.active_dashboard_query = Some(cancelled.clone());
         cancelled
     }
@@ -41,9 +41,6 @@ impl QueryManager {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::sync::atomic::Ordering;
-
     use super::QueryManager;
 
     #[test]
@@ -52,11 +49,16 @@ mod tests {
         let first = manager.begin_dashboard_query();
         let second = manager.begin_dashboard_query();
 
-        assert!(first.load(Ordering::Relaxed));
-        assert!(!second.load(Ordering::Relaxed));
-        assert!(Arc::ptr_eq(
-            manager.active_dashboard_query.as_ref().unwrap(),
-            &second
-        ));
+        assert!(first.is_cancelled());
+        assert!(!second.is_cancelled());
+
+        second.cancel();
+        assert!(
+            manager
+                .active_dashboard_query
+                .as_ref()
+                .expect("active dashboard query should be tracked")
+                .is_cancelled()
+        );
     }
 }
