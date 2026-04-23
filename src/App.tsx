@@ -406,7 +406,6 @@ function App() {
         <Activity mode={activeTab === "profiles" ? "visible" : "hidden"}>
           <Profiles
             config={guardedState.appConfig}
-            configLoading={configLoading}
             saveConfig={saveConfig}
           />
         </Activity>

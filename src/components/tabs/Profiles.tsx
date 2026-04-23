@@ -22,13 +22,12 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export interface ProfilesProps {
   config: AppConfig;
-  configLoading: boolean;
   saveConfig: (config: AppConfig) => Promise<void>;
 }
 
-function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
+function Profiles({ config, saveConfig }: ProfilesProps) {
   const queryClient = useQueryClient();
-  let [loading, setLoading] = useState(configLoading);
+  let [loading, setLoading] = useState(false);
   [loading] = useDebounce(loading, 200);
   const [selectedProfile, setSelectedProfile] = useState<{
     profile: Profile,
@@ -49,32 +48,34 @@ function Profiles({ config, configLoading, saveConfig }: ProfilesProps) {
       current_profile: profileName
     };
 
-    await saveConfig(updatedConfig);
-
-    // Reconnect to etcd with the new profile
     try {
-      await initializeClient();
+      await saveConfig(updatedConfig);
 
-      queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
-      queryClient.invalidateQueries({ queryKey: ["metrics"] });
+      // Reconnect to etcd with the new profile
+      try {
+        await initializeClient();
 
-      toaster.create({
-        title: "Profile Activated",
-        description: `Connected to ${profileName}`,
-        type: "success",
-        closable: true,
-      });
-    } catch (error) {
-      console.error("Failed to activate profile:", error);
-      toaster.create({
-        title: "Connection Failed",
-        description: "Failed to connect to the selected profile. Please check your connection settings.",
-        type: "error",
-        closable: true,
-      });
+        queryClient.invalidateQueries({ queryKey: ["cluster-info"] });
+        queryClient.invalidateQueries({ queryKey: ["metrics"] });
+
+        toaster.create({
+          title: "Profile Activated",
+          description: `Connected to ${profileName}`,
+          type: "success",
+          closable: true,
+        });
+      } catch (error) {
+        console.error("Failed to activate profile:", error);
+        toaster.create({
+          title: "Connection Failed",
+          description: "Failed to connect to the selected profile. Please check your connection settings.",
+          type: "error",
+          closable: true,
+        });
+      }
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleCreateProfile = () => {
