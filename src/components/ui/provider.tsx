@@ -1,7 +1,6 @@
 "use client"
 
 import { ChakraProvider, createSystem, defaultConfig, defineConfig } from "@chakra-ui/react"
-import type { VisualTheme } from "../../api/etcd"
 import {
   ColorModeProvider,
   type ColorModeProviderProps,
@@ -10,7 +9,7 @@ import { useMemo } from "react"
 import { getThemeDefinition } from "./themes"
 
 interface ProviderProps extends ColorModeProviderProps {
-  visualTheme?: VisualTheme
+  visualTheme?: string
   fontFamilyBody?: string
   fontFamilyMono?: string
 }
@@ -29,17 +28,26 @@ export function Provider(props: ProviderProps) {
     }
 
     const resolvedTheme = getThemeDefinition(visualTheme)
+    const { globalCss, ...themeDefinition } = resolvedTheme
+    const resolvedTokens = "tokens" in themeDefinition ? themeDefinition.tokens : undefined
+    const resolvedFontTokens: Record<string, { value: string }> = resolvedTokens && "fonts" in resolvedTokens
+      ? (resolvedTokens.fonts as Record<string, { value: string }>)
+      : {}
 
     const theme = Object.keys(fonts).length > 0
       ? {
-        ...resolvedTheme,
+        ...themeDefinition,
         tokens: {
-          fonts,
+          ...resolvedTokens,
+          fonts: {
+            ...resolvedFontTokens,
+            ...fonts,
+          },
         },
       }
-      : resolvedTheme
+      : themeDefinition
 
-    const config = defineConfig({ theme })
+    const config = defineConfig({ theme, globalCss })
 
     return createSystem(defaultConfig, config)
   }, [fontFamilyBody, fontFamilyMono, visualTheme])

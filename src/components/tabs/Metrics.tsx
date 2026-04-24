@@ -328,7 +328,7 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
                                     <VStack textAlign="center" gap={3}>
                                         <EmptyState.Title>Failed to Fetch Metrics</EmptyState.Title>
                                         <EmptyState.Description>
-                                            <Text color="app.error.fg" fontWeight="medium" maxW="400px">
+                                            <Text color="fg.muted" fontWeight="medium" maxW="400px">
                                                 {errorMessage}
                                             </Text>
                                         </EmptyState.Description>

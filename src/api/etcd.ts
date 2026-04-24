@@ -77,7 +77,7 @@ export interface AppConfig {
     profiles: Profile[];
     current_profile: string | null;
     color_theme: 'Light' | 'Dark' | 'System';
-    visual_theme: VisualTheme;
+    visual_theme: string;
     font_family_body?: string;
     font_family_mono?: string;
     kv_load_method: "Lazy" | "Full";
@@ -86,7 +86,6 @@ export interface AppConfig {
     log_file_path?: string;
 }
 
-export type VisualTheme = "Default";
 export type UpdateChannel = "Stable" | "Beta";
 export type UpdateCheckSchedule = "Never" | "Daily" | "Weekly" | "Monthly";
 

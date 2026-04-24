@@ -1,10 +1,13 @@
-import type { VisualTheme } from "../../../api/etcd"
-import { defaultTheme } from "./default-theme"
+import { Default } from "./Default"
+import { Yororen } from "./Yororen"
 
-const themes = {
-    Default: defaultTheme,
+export const themes = {
+    Default,
+    Yororen,
 } as const
 
-export function getThemeDefinition(visualTheme: VisualTheme) {
-    return themes[visualTheme] ?? defaultTheme
+export const themeNames = Object.keys(themes) as Array<keyof typeof themes>
+
+export function getThemeDefinition(visualTheme?: string) {
+    return themes[visualTheme as keyof typeof themes] ?? Default
 }

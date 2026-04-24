@@ -19,12 +19,13 @@ import {
   createListCollection,
   ScrollArea,
 } from "@chakra-ui/react";
-import type { AppConfig, UpdateChannel, UpdateCheckSchedule, VisualTheme } from "../../api/etcd";
+import type { AppConfig, UpdateChannel, UpdateCheckSchedule } from "../../api/etcd";
 import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug, LuZap, LuDatabase } from "react-icons/lu";
 import { Tooltip } from "../ui/tooltip";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { themeNames } from "../ui/themes";
 
 // --- Hooks ---
 
@@ -276,8 +277,8 @@ function Settings({
 
   const uiFontCollection = createListCollection({ items: fontItems });
   const codeFontCollection = createListCollection({ items: fontItems });
-  const visualThemeCollection = createListCollection<{ label: string; value: VisualTheme }>({
-    items: [{ label: "Default", value: "Default" }],
+  const visualThemeCollection = createListCollection<{ label: string; value: string }>({
+    items: themeNames.map((name) => ({ label: name, value: name })),
   });
 
   const handleCheckUpdate = async () => {
@@ -328,7 +329,7 @@ function Settings({
                             <Select.Root
                               collection={visualThemeCollection}
                               value={[field.value || "Default"]}
-                              onValueChange={(e) => field.onChange(e.value[0] as VisualTheme)}
+                              onValueChange={(e) => field.onChange(e.value[0] ?? "Default")}
                             >
                               <Select.Trigger>
                                 <Select.ValueText placeholder="Default" />

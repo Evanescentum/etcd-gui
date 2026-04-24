@@ -7,8 +7,8 @@ pub struct AppConfig {
     pub profiles: Vec<Profile>,
     pub current_profile: Option<String>,
     pub color_theme: ColorTheme,
-    #[serde(default)]
-    pub visual_theme: VisualTheme,
+    #[serde(default = "default_visual_theme")]
+    pub visual_theme: String,
     pub font_family_body: Option<String>,
     pub font_family_mono: Option<String>,
     #[serde(default)]
@@ -17,6 +17,10 @@ pub struct AppConfig {
     pub update_channel: UpdateChannel,
     #[serde(default)]
     pub update_check_schedule: UpdateCheckSchedule,
+}
+
+fn default_visual_theme() -> String {
+    "Default".to_string()
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default, strum::Display)]
@@ -89,12 +93,6 @@ pub enum ColorTheme {
     Dark,
     #[default]
     System,
-}
-
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub enum VisualTheme {
-    #[default]
-    Default,
 }
 
 impl AppConfig {

@@ -188,7 +188,7 @@ function ViewValueDialog({ keyToView, valueToView, item, onClose, onNavigate }: 
         <Dialog.Root open size="xl" onOpenChange={(details) => { if (!details.open) onClose(); }}>
             <Dialog.Backdrop />
             <Dialog.Positioner>
-                <Dialog.Content bg="transparent" shadow="none" maxW="max-content">
+                <Dialog.Content bg="transparent" shadow="none" borderWidth="0" overflow="visible" maxW="max-content">
                     <Flex align="start" gap={4} justify="center">
                         {/* Main View Window */}
                         <Box

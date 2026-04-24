@@ -1,4 +1,5 @@
-export const defaultTheme = {
+export const Default = {
+    globalCss: {},
     semanticTokens: {
         colors: {
             app: {
