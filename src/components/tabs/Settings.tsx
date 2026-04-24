@@ -19,7 +19,7 @@ import {
   createListCollection,
   ScrollArea,
 } from "@chakra-ui/react";
-import type { AppConfig, UpdateChannel, UpdateCheckSchedule } from "../../api/etcd";
+import type { AppConfig, UpdateChannel, UpdateCheckSchedule, VisualTheme } from "../../api/etcd";
 import { getConfigFilePath, openConfigFile, openConfigFolder, openDevtools, getSystemFonts } from "../../api/etcd";
 import { toaster } from "../ui/toaster";
 import { LuMonitor, LuSun, LuMoon, LuCopy, LuExternalLink, LuFolderOpen, LuBug, LuZap, LuDatabase } from "react-icons/lu";
@@ -276,6 +276,9 @@ function Settings({
 
   const uiFontCollection = createListCollection({ items: fontItems });
   const codeFontCollection = createListCollection({ items: fontItems });
+  const visualThemeCollection = createListCollection<{ label: string; value: VisualTheme }>({
+    items: [{ label: "Default", value: "Default" }],
+  });
 
   const handleCheckUpdate = async () => {
     try {
@@ -313,6 +316,34 @@ function Settings({
                               <SegmentGroup.Indicator />
                               <SegmentGroup.Items items={themeOptions} />
                             </SegmentGroup.Root>
+                          )}
+                        />
+                      </Box>
+                      <Box fontSize="sm">
+                        <Text fontWeight="medium" mb={2}>Theme</Text>
+                        <Controller
+                          name="visual_theme"
+                          control={control}
+                          render={({ field }) => (
+                            <Select.Root
+                              collection={visualThemeCollection}
+                              value={[field.value || "Default"]}
+                              onValueChange={(e) => field.onChange(e.value[0] as VisualTheme)}
+                            >
+                              <Select.Trigger>
+                                <Select.ValueText placeholder="Default" />
+                              </Select.Trigger>
+                              <Select.Positioner>
+                                <Select.Content>
+                                  {visualThemeCollection.items.map((item) => (
+                                    <Select.Item item={item} key={item.value}>
+                                      {item.label}
+                                      <Select.ItemIndicator />
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Positioner>
+                            </Select.Root>
                           )}
                         />
                       </Box>

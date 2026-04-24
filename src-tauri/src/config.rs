@@ -7,6 +7,8 @@ pub struct AppConfig {
     pub profiles: Vec<Profile>,
     pub current_profile: Option<String>,
     pub color_theme: ColorTheme,
+    #[serde(default)]
+    pub visual_theme: VisualTheme,
     pub font_family_body: Option<String>,
     pub font_family_mono: Option<String>,
     #[serde(default)]
@@ -87,6 +89,12 @@ pub enum ColorTheme {
     Dark,
     #[default]
     System,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub enum VisualTheme {
+    #[default]
+    Default,
 }
 
 impl AppConfig {

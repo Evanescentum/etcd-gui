@@ -455,15 +455,11 @@ function Cluster({ configLoading }: ClusterProps) {
                                                                 px={2}
                                                                 py={1}
                                                                 borderRadius="md"
-                                                                bg="purple.50"
+                                                                bg="app.endpoint.peer.bg"
                                                                 borderWidth="1px"
-                                                                borderColor="purple.200"
-                                                                _dark={{
-                                                                    bg: "purple.950",
-                                                                    borderColor: "purple.800"
-                                                                }}
+                                                                borderColor="app.endpoint.peer.border"
                                                             >
-                                                                <Text fontFamily="mono" fontSize="xs" color="purple.700" _dark={{ color: "purple.300" }}>
+                                                                <Text fontFamily="mono" fontSize="xs" color="app.endpoint.peer.fg">
                                                                     {url}
                                                                 </Text>
                                                             </Box>
@@ -478,15 +474,11 @@ function Cluster({ configLoading }: ClusterProps) {
                                                                 px={2}
                                                                 py={1}
                                                                 borderRadius="md"
-                                                                bg="blue.50"
+                                                                bg="app.endpoint.client.bg"
                                                                 borderWidth="1px"
-                                                                borderColor="blue.200"
-                                                                _dark={{
-                                                                    bg: "blue.950",
-                                                                    borderColor: "blue.800"
-                                                                }}
+                                                                borderColor="app.endpoint.client.border"
                                                             >
-                                                                <Text fontFamily="mono" fontSize="xs" color="blue.700" _dark={{ color: "blue.300" }}>
+                                                                <Text fontFamily="mono" fontSize="xs" color="app.endpoint.client.fg">
                                                                     {url}
                                                                 </Text>
                                                             </Box>

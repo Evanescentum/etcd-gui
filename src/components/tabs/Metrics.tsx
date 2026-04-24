@@ -328,7 +328,7 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
                                     <VStack textAlign="center" gap={3}>
                                         <EmptyState.Title>Failed to Fetch Metrics</EmptyState.Title>
                                         <EmptyState.Description>
-                                            <Text color="red.500" fontWeight="medium" maxW="400px">
+                                            <Text color="app.error.fg" fontWeight="medium" maxW="400px">
                                                 {errorMessage}
                                             </Text>
                                         </EmptyState.Description>
@@ -343,17 +343,17 @@ const Metrics = ({ configLoading, isActive }: MetricsProps) => {
                     ) : (
                         <VStack gap={6} align="stretch">
                             {isError && metricsData && (
-                                <Card.Root borderColor="red.200" bg="red.50" variant="outline">
+                                <Card.Root borderColor="app.error.border" bg="app.error.bg" variant="outline">
                                     <Card.Body>
                                         <Flex align={{ base: "start", md: "center" }} direction={{ base: "column", md: "row" }} gap={4}>
                                             <HStack gap={3} align="start" flex="1">
-                                                <Icon color="red.500" mt={0.5}>
+                                                <Icon color="app.error.fg" mt={0.5}>
                                                     <LuTriangleAlert />
                                                 </Icon>
                                                 <Box>
-                                                    <Text fontWeight="semibold" color="red.700">Latest refresh failed</Text>
-                                                    <Text color="red.600">{errorMessage}</Text>
-                                                    <Text fontSize="sm" color="red.600">Showing the last successful metrics snapshot.</Text>
+                                                    <Text fontWeight="semibold" color="app.error.title">Latest refresh failed</Text>
+                                                    <Text color="app.error.fg">{errorMessage}</Text>
+                                                    <Text fontSize="sm" color="app.error.fg">Showing the last successful metrics snapshot.</Text>
                                                 </Box>
                                             </HStack>
                                             <Button onClick={() => { refetch() }} loading={isFetching} alignSelf={{ base: "stretch", md: "center" }}>

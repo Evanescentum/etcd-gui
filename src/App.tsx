@@ -12,6 +12,7 @@ import { Toaster, toaster } from "./components/ui/toaster";
 import { useTheme } from "next-themes";
 import UpdateCheckDialog from "./components/dialogs/UpdateCheckDialog";
 import { ActiveProfileProvider } from "./contexts/active-profile";
+import { Provider } from "./components/ui/provider";
 
 export type GuardedAppState =
   | { kind: "onboarding" }
@@ -290,27 +291,36 @@ function App() {
     }
   };
 
+  const providerProps = {
+    visualTheme: appConfig?.visual_theme,
+    fontFamilyBody: appConfig?.font_family_body,
+    fontFamilyMono: appConfig?.font_family_mono,
+  };
+
   if (configLoading && !appConfig) {
     return (
-      <Center h="100vh">
-        <EmptyState.Root>
-          <EmptyState.Content>
-            <EmptyState.Indicator>
-              <Spinner size="lg" borderWidth="3px" />
-            </EmptyState.Indicator>
-          </EmptyState.Content>
-        </EmptyState.Root>
-      </Center>
+      <Provider {...providerProps}>
+        <Center h="100vh">
+          <EmptyState.Root>
+            <EmptyState.Content>
+              <EmptyState.Indicator>
+                <Spinner size="lg" borderWidth="3px" />
+              </EmptyState.Indicator>
+            </EmptyState.Content>
+          </EmptyState.Root>
+        </Center>
+        <Toaster />
+      </Provider>
     );
   }
 
   if (guardedState.kind === "onboarding") {
     return (
-      <>
+      <Provider {...providerProps}>
         <ThemeSync appConfig={appConfig} />
         <Onboarding onComplete={handleOnboardingComplete} />
         <Toaster />
-      </>
+      </Provider>
     );
   }
 
@@ -436,7 +446,7 @@ function App() {
   );
 
   return (
-    <>
+    <Provider {...providerProps}>
       <ThemeSync appConfig={guardedState.appConfig} />
       {guardedState.kind === "ready" ? (
         <ActiveProfileProvider
@@ -465,7 +475,7 @@ function App() {
       )}
 
       <Toaster />
-    </>
+    </Provider>
   );
 }
 
