@@ -336,15 +336,13 @@ function App() {
       display="flex"
     >
       <Tabs.List
-        borderRightWidth="thin"
-        borderColor="gray.subtle"
-        width="15rem"
-        borderRadius="none"
+        width="14rem"
       >
         <Tabs.Trigger
           value="dashboard"
           justifyContent="flex-start"
           disabled={guardedState.kind === "profile-required"}
+          mt="5"
         >
           <LuLayoutDashboard /> Dashboard
         </Tabs.Trigger>
@@ -384,7 +382,7 @@ function App() {
         </Tabs.Trigger>
       </Tabs.List>
 
-      <Tabs.Content value="dashboard" paddingX={2} width="100%" height="100%">
+      <Tabs.Content value="dashboard" paddingX={3} width="100%" height="100%">
         {guardedState.kind === "ready" && (
           <Activity mode={activeTab === "dashboard" ? "visible" : "hidden"}>
             <Dashboard
@@ -393,7 +391,7 @@ function App() {
           </Activity>
         )}
       </Tabs.Content>
-      <Tabs.Content value="cluster" paddingX={2} width="100%" height="100%">
+      <Tabs.Content value="cluster" paddingX={3} width="100%" height="100%">
         {guardedState.kind === "ready" && (
           <Activity mode={activeTab === "cluster" ? "visible" : "hidden"}>
             <Cluster
@@ -402,7 +400,7 @@ function App() {
           </Activity>
         )}
       </Tabs.Content>
-      <Tabs.Content value="metrics" paddingX={2} width="100%" height="100%">
+      <Tabs.Content value="metrics" paddingX={3} width="100%" height="100%">
         {guardedState.kind === "ready" && (
           <Activity mode={activeTab === "metrics" ? "visible" : "hidden"}>
             <Metrics
@@ -412,7 +410,7 @@ function App() {
           </Activity>
         )}
       </Tabs.Content>
-      <Tabs.Content value="profiles" paddingX={2} width="100%" height="100%">
+      <Tabs.Content value="profiles" paddingX={3} width="100%" height="100%">
         <Activity mode={activeTab === "profiles" ? "visible" : "hidden"}>
           <Profiles
             config={guardedState.appConfig}
@@ -420,14 +418,14 @@ function App() {
           />
         </Activity>
       </Tabs.Content>
-      <Tabs.Content value="logs" paddingX={2} width="100%" height="100%">
+      <Tabs.Content value="logs" paddingX={3} width="100%" height="100%">
         {guardedState.kind === "ready" && (
           <Activity mode={activeTab === "logs" ? "visible" : "hidden"}>
             <Logs />
           </Activity>
         )}
       </Tabs.Content>
-      <Tabs.Content value="settings" paddingX={2} width="100%" height="100%">
+      <Tabs.Content value="settings" paddingX={3} width="100%" height="100%">
         {guardedState.kind === "ready" && (
           <Activity mode={activeTab === "settings" ? "visible" : "hidden"}>
             <Settings

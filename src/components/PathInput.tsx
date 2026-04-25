@@ -132,25 +132,26 @@ function PathInput({
                 </Combobox.Control>
                 <Portal>
                     <Combobox.Positioner>
-                        <Combobox.Content boxShadow="2xl">
+                        <Combobox.Content boxShadow="sm" overflow="hidden">
                             <ScrollArea.Root maxH="16rem">
                                 <ScrollArea.Viewport>
-                                    <ScrollArea.Content padding={2}>
+                                    <ScrollArea.Content padding={0}>
                                         <Combobox.Empty>No history</Combobox.Empty>
                                         {pathHistoryCollection.items.map((item) => (
                                             <Combobox.Item key={item.value} item={item} padding={0}>
-                                                <Combobox.ItemText fontFamily="mono" fontSize="sm" flex="1">
-                                                    {item.label}
-                                                </Combobox.ItemText>
-                                                <IconButton
-                                                    marginEnd={2}
-                                                    size="sm"
-                                                    variant="ghost"
-                                                    colorPalette="red"
-                                                    onClick={(e) => handleDeletePathFromHistory(e, item.value)}
-                                                >
-                                                    <LuX />
-                                                </IconButton>
+                                                <Flex align="center" gap={1.5} width="full" px={1} py={0.75}>
+                                                    <Combobox.ItemText fontFamily="mono" fontSize="sm" flex="1">
+                                                        {item.label}
+                                                    </Combobox.ItemText>
+                                                    <IconButton
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        colorPalette="red"
+                                                        onClick={(e) => handleDeletePathFromHistory(e, item.value)}
+                                                    >
+                                                        <LuX />
+                                                    </IconButton>
+                                                </Flex>
                                             </Combobox.Item>
                                         ))}
                                     </ScrollArea.Content>

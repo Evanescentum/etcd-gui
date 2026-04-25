@@ -1,8 +1,10 @@
 import { Default } from "./Default"
+import { Metro } from "./Metro"
 import { Yororen } from "./Yororen"
 
 export const themes = {
     Default,
+    Metro,
     Yororen,
 } as const
 

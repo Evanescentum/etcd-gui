@@ -331,9 +331,15 @@ function Settings({
                               value={[field.value || "Default"]}
                               onValueChange={(e) => field.onChange(e.value[0] ?? "Default")}
                             >
-                              <Select.Trigger>
-                                <Select.ValueText placeholder="Default" />
-                              </Select.Trigger>
+                              <Select.HiddenSelect />
+                              <Select.Control>
+                                <Select.Trigger>
+                                  <Select.ValueText placeholder="Default" />
+                                </Select.Trigger>
+                                <Select.IndicatorGroup>
+                                  <Select.Indicator />
+                                </Select.IndicatorGroup>
+                              </Select.Control>
                               <Select.Positioner>
                                 <Select.Content>
                                   {visualThemeCollection.items.map((item) => (
@@ -359,9 +365,15 @@ function Settings({
                               value={[field.value || ""]}
                               onValueChange={(e) => field.onChange(e.value[0])}
                             >
-                              <Select.Trigger>
-                                <Select.ValueText placeholder="System" />
-                              </Select.Trigger>
+                              <Select.HiddenSelect />
+                              <Select.Control>
+                                <Select.Trigger>
+                                  <Select.ValueText placeholder="System" />
+                                </Select.Trigger>
+                                <Select.IndicatorGroup>
+                                  <Select.Indicator />
+                                </Select.IndicatorGroup>
+                              </Select.Control>
                               <Select.Positioner>
                                 <Select.Content>
                                   {uiFontCollection.items.map((item) => (
@@ -391,9 +403,15 @@ function Settings({
                               value={[field.value || ""]}
                               onValueChange={(e) => field.onChange(e.value[0])}
                             >
-                              <Select.Trigger>
-                                <Select.ValueText placeholder="System" />
-                              </Select.Trigger>
+                              <Select.HiddenSelect />
+                              <Select.Control>
+                                <Select.Trigger>
+                                  <Select.ValueText placeholder="System" />
+                                </Select.Trigger>
+                                <Select.IndicatorGroup>
+                                  <Select.Indicator />
+                                </Select.IndicatorGroup>
+                              </Select.Control>
                               <Select.Positioner>
                                 <Select.Content>
                                   {codeFontCollection.items.map((item) => (
@@ -403,6 +421,7 @@ function Settings({
                                       fontFamily={item.value || "mono"}
                                     >
                                       {item.label}
+                                      <Select.ItemIndicator />
                                     </Select.Item>
                                   ))}
                                 </Select.Content>
@@ -461,9 +480,15 @@ function Settings({
                               value={[field.value || "Daily"]}
                               onValueChange={(e) => field.onChange(e.value[0] as UpdateCheckSchedule)}
                             >
-                              <Select.Trigger>
-                                <Select.ValueText placeholder="Daily" />
-                              </Select.Trigger>
+                              <Select.HiddenSelect />
+                              <Select.Control>
+                                <Select.Trigger>
+                                  <Select.ValueText placeholder="Daily" />
+                                </Select.Trigger>
+                                <Select.IndicatorGroup>
+                                  <Select.Indicator />
+                                </Select.IndicatorGroup>
+                              </Select.Control>
                               <Select.Positioner>
                                 <Select.Content>
                                   {updateScheduleCollection.items.map((item) => (
