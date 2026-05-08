@@ -336,7 +336,16 @@ async fn send_page(
             fetched_kvs.extend(batch);
         }
         snapshot.merge_scanned_range(range, fetched_kvs.clone());
-        fetched_kvs
+
+        paged_kvs
+            .iter()
+            .map(|entry| {
+                fetched_kvs
+                    .binary_search_by_key(&entry.key.as_str(), |entry| entry.key.as_str())
+                    .map(|index| fetched_kvs[index].clone())
+                    .unwrap_or_else(|_| entry.clone())
+            })
+            .collect()
     } else {
         paged_kvs.to_vec()
     };
@@ -398,8 +407,7 @@ pub async fn start_dashboard_query(
 mod tests {
     use serde_json::json;
 
-    use super::QueryEvent;
-    use super::page_bounds;
+    use super::{QueryEvent, page_bounds};
 
     #[test]
     fn page_bounds_are_one_based() {
