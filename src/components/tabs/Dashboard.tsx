@@ -156,6 +156,9 @@ function Dashboard({ configLoading }: DashboardProps) {
   const showUnknownTotal = total === null && isTotalLoading;
   const showScanProgress = !loadError && isStreaming && progress !== null && progress.sourceTotal > 0;
 
+  const isLocked = activeProfile.locked === true;
+  const lockedTitle = isLocked ? "Current profile is locked (read-only)" : undefined;
+
   return (
     <Flex direction="column" height="100vh">
       <Flex marginTop={0} direction="column" overflowY="auto">
@@ -206,7 +209,12 @@ function Dashboard({ configLoading }: DashboardProps) {
                 </InputGroup>
               </Flex>
 
-              <Button onClick={() => setDialogState({ action: "add", key: "", value: "" })} width="7rem">
+              <Button
+                onClick={() => setDialogState({ action: "add", key: "", value: "" })}
+                width="7rem"
+                disabled={isLocked}
+                title={lockedTitle}
+              >
                 <LuPlus />
                 Add
               </Button>
@@ -271,19 +279,21 @@ function Dashboard({ configLoading }: DashboardProps) {
                       />
                       <IconButton
                         aria-label="Edit"
-                        title="Edit key"
+                        title={lockedTitle ?? "Edit key"}
                         children={<TbEdit />}
                         variant="ghost"
                         size="sm"
+                        disabled={isLocked}
                         onClick={() => setDialogState({ action: "edit", key: item.key, value: item.value, })}
                       />
                       <IconButton
                         aria-label="Delete"
-                        title="Delete key"
+                        title={lockedTitle ?? "Delete key"}
                         children={<LuTrash2 />}
                         size="sm"
                         colorPalette="red"
                         variant="ghost"
+                        disabled={isLocked}
                         onClick={() => setDialogState({ action: "delete", key: item.key, value: item.value })}
                       />
                     </HStack>
