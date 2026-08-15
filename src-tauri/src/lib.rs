@@ -288,8 +288,15 @@ async fn update_config(
     serde_json::to_writer_pretty(file, &config)
         .map_err(|e| format!("Failed to write config: {}", e))?;
 
-    // Check if current profile changed
-    let should_reconnect = app_state.app_config.current_profile != config.current_profile;
+    // Check if current profile changed: either the selected profile name, or
+    // connection-relevant fields (endpoints/credentials/timeouts) of the
+    // currently selected profile.
+    let should_reconnect = app_state.app_config.current_profile != config.current_profile
+        || app_state
+            .app_config
+            .get_current_profile()
+            .map(|p| p.fingerprint())
+            != config.get_current_profile().map(|p| p.fingerprint());
 
     // Update in-memory config
     app_state.app_config = config; // Update in-memory config with the new settings
