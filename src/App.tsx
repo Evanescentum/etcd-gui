@@ -133,6 +133,7 @@ function App() {
       try {
         // If config doesn't exist, onboarding screen will be shown
         if (!await configFileExists()) {
+          setConfigLoading(false);
           return;
         }
 

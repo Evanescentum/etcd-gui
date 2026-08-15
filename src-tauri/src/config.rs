@@ -100,12 +100,14 @@ impl AppConfig {
 
     /// Returns app config path
     pub fn get_config_path(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
-        app_handle
+        let path = app_handle
             .path()
             .app_config_dir()
-            .map_err(|e| e.to_string())
-            .map(|dir| dir.join(Self::CONFIG_FILE_NAME))
-            .and_then(|dir| dunce::realpath(dir).map_err(|e| e.to_string()))
+            .map_err(|e| e.to_string())?
+            .join(Self::CONFIG_FILE_NAME);
+        // Canonicalize to strip UNC prefixes on Windows, but the config file
+        // may not exist yet, so fall back to the plain path in that case.
+        Ok(dunce::realpath(&path).unwrap_or(path))
     }
 
     pub fn from_file(path: impl AsRef<std::path::Path>) -> std::io::Result<Self> {
