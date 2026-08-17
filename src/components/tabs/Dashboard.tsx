@@ -134,12 +134,13 @@ function Dashboard({ configLoading }: DashboardProps) {
     setRefreshNonce((current) => current + 1);
   };
 
-  const [dialogState, setDialogState] = useState<{
-    action: "add" | "edit" | "delete" | "view",
-    key: string,
-    value: string,
-    item?: EtcdItem
-  } | null>(null);
+  const [dialogState, setDialogState] = useState<
+    | { action: "add" }
+    | { action: "edit", key: string, value: string, modRevision: number }
+    | { action: "delete", key: string, value: string }
+    | { action: "view", key: string, value: string, item: EtcdItem }
+    | null
+  >(null);
 
   const searchEndElement = searchQuery ? (
     <CloseButton
@@ -210,7 +211,7 @@ function Dashboard({ configLoading }: DashboardProps) {
               </Flex>
 
               <Button
-                onClick={() => setDialogState({ action: "add", key: "", value: "" })}
+                onClick={() => setDialogState({ action: "add" })}
                 width="7rem"
                 disabled={isLocked}
                 title={lockedTitle}
@@ -284,7 +285,12 @@ function Dashboard({ configLoading }: DashboardProps) {
                         variant="ghost"
                         size="sm"
                         disabled={isLocked}
-                        onClick={() => setDialogState({ action: "edit", key: item.key, value: item.value, })}
+                        onClick={() => setDialogState({
+                          action: "edit",
+                          key: item.key,
+                          value: item.value,
+                          modRevision: item.mod_revision,
+                        })}
                       />
                       <IconButton
                         aria-label="Delete"
@@ -449,6 +455,7 @@ function Dashboard({ configLoading }: DashboardProps) {
         <EditKeyDialog
           keyToEdit={dialogState.key}
           valueToEdit={dialogState.value}
+          expectedModRevision={dialogState.modRevision}
           onSuccess={queryResult.refetch}
           onClose={() => setDialogState(null)}
         />

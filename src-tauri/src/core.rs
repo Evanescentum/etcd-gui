@@ -2,7 +2,7 @@ mod split_batch;
 
 use std::ops::Range;
 
-use etcd_client::GetOptions;
+use etcd_client::{Compare, CompareOp, GetOptions, Txn, TxnOp, TxnOpResponse};
 
 pub use split_batch::{BatchFetcher, KeysOnlySplitter, KvSplitter, item_from_kv};
 
@@ -84,6 +84,86 @@ pub async fn put_key(key: &str, value: &str, state: &mut AppState) -> Result<(),
             client.put(key, value, None).await.map(|_| ())
         })
         .await
+}
+
+/// Update an unchanged key, or atomically move it to an unused key.
+pub async fn edit_key(
+    original_key: &str,
+    key: &str,
+    value: &str,
+    expected_mod_revision: i64,
+    state: &mut AppState,
+) -> Result<(), String> {
+    let is_rename = original_key != key;
+    let mut compares = vec![Compare::mod_revision(
+        original_key,
+        CompareOp::Equal,
+        expected_mod_revision,
+    )];
+    let success_ops = if is_rename {
+        compares.push(Compare::version(key, CompareOp::Equal, 0));
+        vec![
+            TxnOp::put(key, value, None),
+            TxnOp::delete(original_key, None),
+        ]
+    } else {
+        vec![TxnOp::put(original_key, value, None)]
+    };
+    let failure_ops = if is_rename {
+        vec![TxnOp::get(original_key, None), TxnOp::get(key, None)]
+    } else {
+        vec![TxnOp::get(original_key, None)]
+    };
+
+    let response = state
+        .perform_op(async |mut client: etcd_client::Client| {
+            client
+                .txn(
+                    Txn::new()
+                        .when(compares.clone())
+                        .and_then(success_ops.clone())
+                        .or_else(failure_ops.clone()),
+                )
+                .await
+        })
+        .await?;
+
+    if response.succeeded() {
+        return Ok(());
+    }
+
+    let responses = response.op_responses();
+    let source = match responses.first() {
+        Some(TxnOpResponse::Get(response)) => response.kvs().first(),
+        _ => None,
+    };
+    if source.is_none() {
+        return Err(
+            "The original key was deleted after this editor opened. Your input is preserved; cancel and refresh before editing the latest data."
+                .to_string(),
+        );
+    }
+    if source.is_some_and(|kv| kv.mod_revision() != expected_mod_revision) {
+        return Err(
+            "The original key changed after this editor opened. Your input is preserved; cancel and reopen the latest value before editing again."
+                .to_string(),
+        );
+    }
+
+    if is_rename {
+        let destination_exists = match responses.get(1) {
+            Some(TxnOpResponse::Get(response)) => !response.kvs().is_empty(),
+            _ => false,
+        };
+        if destination_exists {
+            return Err(
+                "The destination key already exists. Choose a different key name; it was not overwritten."
+                    .to_string(),
+            );
+        }
+    }
+
+    Err("The key could not be edited because its state changed. Your input is preserved; cancel and refresh before trying again.".to_string())
 }
 
 /// Delete a key from etcd

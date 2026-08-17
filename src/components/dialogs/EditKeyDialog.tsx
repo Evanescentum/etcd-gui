@@ -2,7 +2,7 @@ import { useState, ChangeEvent } from "react";
 import { Button, CloseButton, Dialog, Field, Input, VStack, Box, Textarea, Text } from "@chakra-ui/react";
 import { codeInputProps } from "@/utils/inputProps";
 import { useColorModeValue } from "../../components/ui/color-mode";
-import { putKey } from "@/api/etcd";
+import { editKey } from "@/api/etcd";
 import { HiX } from "react-icons/hi";
 import { toaster } from "../ui/toaster";
 import { useMutation } from "@tanstack/react-query";
@@ -10,6 +10,7 @@ import { useMutation } from "@tanstack/react-query";
 interface EditKeyDialogProps {
     keyToEdit: string;
     valueToEdit: string;
+    expectedModRevision: number;
     onClose: () => void;
     onSuccess: () => Promise<void> | void;
 }
@@ -17,20 +18,26 @@ interface EditKeyDialogProps {
 function EditKeyDialog({
     keyToEdit,
     valueToEdit,
+    expectedModRevision,
     onClose,
     onSuccess,
 }: EditKeyDialogProps) {
     const [dialogKey, setDialogKey] = useState(keyToEdit);
     const [dialogValue, setDialogValue] = useState(valueToEdit);
     const [isKeyEditable, setIsKeyEditable] = useState(false);
+    const [errorMessage, setErrorMessage] = useState<string | null>(null);
     const readOnlyBackground = useColorModeValue("gray.100", "gray.700");
-    const { mutateAsync, isPending } = useMutation<void, string, { key: string, value: string }>({
-        mutationFn: async ({ key, value }) => await putKey(key, value),
+    const { mutate, isPending } = useMutation<void, string, { key: string, value: string }>({
+        mutationFn: async ({ key, value }) => {
+            setErrorMessage(null);
+            await editKey(keyToEdit, key, value, expectedModRevision);
+        },
         onSuccess: async () => {
             await onSuccess();
             onClose();
         },
         onError: (error: string) => {
+            setErrorMessage(error);
             toaster.create({ type: "error", title: "Edit Key Failed", description: error, closable: true });
         },
     });
@@ -52,7 +59,10 @@ function EditKeyDialog({
                                     <Input
                                         {...codeInputProps}
                                         value={dialogKey}
-                                        onChange={(e) => setDialogKey(e.target.value)}
+                                        onChange={(e) => {
+                                            setDialogKey(e.target.value);
+                                            setErrorMessage(null);
+                                        }}
                                         placeholder="Enter key path"
                                         readOnly={!isKeyEditable}
                                         bg={!isKeyEditable ? readOnlyBackground : undefined}
@@ -71,7 +81,7 @@ function EditKeyDialog({
                                 </Box>
                                 {isKeyEditable && (
                                     <Text fontFamily="mono" fontSize="xs" color="orange.500" mt={1}>
-                                        Warning: Changing the key will create a new key-value pair and leave the old one intact
+                                        Changing the key atomically moves it. The destination key must not already exist.
                                     </Text>
                                 )}
                             </Field.Root>
@@ -84,9 +94,17 @@ function EditKeyDialog({
                                     placeholder="Enter value (string, JSON, etc.)"
                                     autoresize
                                     value={dialogValue}
-                                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => setDialogValue(e.target.value)}
+                                    onChange={(e: ChangeEvent<HTMLTextAreaElement>) => {
+                                        setDialogValue(e.target.value);
+                                        setErrorMessage(null);
+                                    }}
                                 />
                             </Field.Root>
+                            {errorMessage && (
+                                <Text role="alert" color="red.500" fontSize="sm" whiteSpace="pre-wrap">
+                                    {errorMessage}
+                                </Text>
+                            )}
                         </VStack>
                     </Dialog.Body>
 
@@ -95,7 +113,7 @@ function EditKeyDialog({
                             Cancel
                         </Button>
                         <Button
-                            onClick={() => void mutateAsync({ key: dialogKey, value: dialogValue })}
+                            onClick={() => mutate({ key: dialogKey, value: dialogValue })}
                             disabled={!dialogKey.trim() || !dialogValue.trim() || isPending}
                             loading={isPending}
                         >

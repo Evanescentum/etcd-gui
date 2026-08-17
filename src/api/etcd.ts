@@ -257,6 +257,24 @@ export async function putKey(key: string, value: string): Promise<void> {
 }
 
 /**
+ * Update a key only if it has not changed since it was loaded. If the key name
+ * changes, the old key is atomically moved without overwriting an existing key.
+ */
+export async function editKey(
+    originalKey: string,
+    key: string,
+    value: string,
+    expectedModRevision: number,
+): Promise<void> {
+    try {
+        await invoke<void>('edit_key', { originalKey, key, value, expectedModRevision });
+    } catch (error) {
+        console.error('Error editing etcd item:', error);
+        throw error;
+    }
+}
+
+/**
  * Delete a key from etcd
  * @param key The key to delete
  */

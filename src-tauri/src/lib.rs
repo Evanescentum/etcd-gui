@@ -167,6 +167,28 @@ async fn put_key(
 }
 
 #[tauri::command]
+async fn edit_key(
+    original_key: String,
+    key: String,
+    value: String,
+    expected_mod_revision: i64,
+    state: State<'_, Mutex<AppState>>,
+) -> Result<(), String> {
+    log::info!("Editing key: {} -> {}", original_key, key);
+    let mut state = state.lock().await;
+    state.app_config.ensure_current_profile_unlocked()?;
+    core::edit_key(
+        &original_key,
+        &key,
+        &value,
+        expected_mod_revision,
+        &mut state,
+    )
+    .await
+    .inspect_err(|e| log::error!("Failed to edit key {}: {}", original_key, e))
+}
+
+#[tauri::command]
 async fn delete_key(key: String, state: State<'_, Mutex<AppState>>) -> Result<(), String> {
     log::info!("Deleting key: {}", key);
     let mut state = state.lock().await;
@@ -614,6 +636,7 @@ pub fn run() {
             initialize_etcd_client,
             dashboard::start_dashboard_query,
             put_key,
+            edit_key,
             delete_key,
             get_cluster_info,
             get_config,
