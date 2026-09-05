@@ -104,6 +104,8 @@ export interface UpdateCheckResult {
     current_version: string;
     update_available: boolean;
     release: ReleaseInfo;
+    cached: boolean;
+    checked_at: number;
 }
 
 export interface AutoUpdateCheckEvent {

@@ -53,7 +53,7 @@ function UpdateCheckDialog({ onClose, result }: UpdateCheckDialogProps) {
 
     const title = result.update_available
         ? "New version available!"
-        : "You're up to date!";
+        : result.cached ? "Cached update information" : "You're up to date!";
 
     return (
         <Dialog.Root defaultOpen onOpenChange={(e) => { if (!e.open) onClose(); }}>
@@ -66,6 +66,11 @@ function UpdateCheckDialog({ onClose, result }: UpdateCheckDialogProps) {
 
                     <Dialog.Body>
                         <VStack align="stretch" gap={4}>
+                            {result.cached && (
+                                <Text color="fg.muted" fontSize="sm">
+                                    Showing saved release information. Last checked: {new Date(result.checked_at * 1000).toLocaleString()}.
+                                </Text>
+                            )}
                             <HStack align="center" gap={2} wrap="wrap">
                                 <Text fontWeight="medium" fontSize="md">{result.current_version}</Text>
                                 {result.update_available ? (
@@ -78,7 +83,7 @@ function UpdateCheckDialog({ onClose, result }: UpdateCheckDialogProps) {
                                             )}
                                         </HStack>
                                     </>
-                                ) : <Badge colorPalette="green" variant="subtle" size="sm">Latest</Badge>}
+                                ) : <Badge colorPalette="green" variant="subtle" size="sm">{result.cached ? "Latest at last check" : "Latest"}</Badge>}
                             </HStack>
 
                             {release && (

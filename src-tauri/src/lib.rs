@@ -46,14 +46,19 @@ fn emit_update_check_event(app_handle: &tauri::AppHandle, payload: UpdateCheckEv
     }
 }
 
-async fn run_update_check_and_emit(
-    app_handle: &tauri::AppHandle,
-    channel: config::UpdateChannel,
-    schedule: config::UpdateCheckSchedule,
-) {
+async fn run_update_check_and_emit(app_handle: &tauri::AppHandle) {
     let current_version = app_handle.package_info().version.clone();
     let state = app_handle.state::<Mutex<update_schedule::UpdateSchedule>>();
     let mut updates = state.lock().await;
+    // Settings may have changed while a manual request held the update lock.
+    let (channel, schedule) = {
+        let state = app_handle.state::<Mutex<AppState>>();
+        let app_state = state.lock().await;
+        (
+            app_state.app_config.update_channel.clone(),
+            app_state.app_config.update_check_schedule.clone(),
+        )
+    };
     // A manual check may have completed while the worker was waiting for this lock.
     if updates
         .history
@@ -62,16 +67,12 @@ async fn run_update_check_and_emit(
     {
         return;
     }
-    updates
-        .history
-        .record(&channel, update_schedule::unix_now());
-    updates.save();
 
     log::info!(
         "Checking automatic update on GitHub (channel={channel}, current={current_version})"
     );
 
-    match update::check_update(channel, current_version).await {
+    match updates.check(channel, current_version).await {
         Ok(result) => {
             emit_update_check_event(
                 app_handle,
@@ -82,14 +83,8 @@ async fn run_update_check_and_emit(
             );
         }
         Err(err) => {
-            log::error!("Update check failed: {err}");
-            emit_update_check_event(
-                app_handle,
-                UpdateCheckEvent {
-                    result: None,
-                    error: Some(err),
-                },
-            );
+            // Background network failures should not interrupt the user's etcd work.
+            log::warn!("Automatic update check deferred: {err}");
         }
     }
 }
@@ -97,6 +92,7 @@ async fn run_update_check_and_emit(
 async fn update_check_worker(app_handle: tauri::AppHandle, worker_control: Arc<Notify>) {
     // Allow the frontend to register its event listener before an overdue check.
     tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+    let mut show_cached_update = true;
 
     loop {
         let (channel, schedule) = {
@@ -110,18 +106,34 @@ async fn update_check_worker(app_handle: tauri::AppHandle, worker_control: Arc<N
 
         let delay = {
             let state = app_handle.state::<Mutex<update_schedule::UpdateSchedule>>();
-            state
-                .lock()
-                .await
+            let updates = state.lock().await;
+            let delay = updates
                 .history
-                .delay(&channel, &schedule, update_schedule::unix_now())
+                .delay(&channel, &schedule, update_schedule::unix_now());
+            if show_cached_update
+                && delay.is_some_and(|delay| !delay.is_zero())
+                && let Some(result) = updates
+                    .history
+                    .cached_result(&channel, &app_handle.package_info().version)
+                && result.update_available
+            {
+                emit_update_check_event(
+                    &app_handle,
+                    UpdateCheckEvent {
+                        result: Some(result),
+                        error: None,
+                    },
+                );
+            }
+            show_cached_update = false;
+            delay
         };
         match delay {
             None => {
                 worker_control.notified().await;
             }
             Some(interval) if interval.is_zero() => {
-                run_update_check_and_emit(&app_handle, channel, schedule).await;
+                run_update_check_and_emit(&app_handle).await;
             }
             Some(interval) => {
                 tokio::select! {
@@ -141,17 +153,14 @@ async fn check_update(
 ) -> Result<update::UpdateCheckResult, String> {
     let current_version = app_handle.package_info().version.clone();
 
-    log::info!("Checking update on GitHub (channel={channel}, current={current_version})");
+    log::info!("Checking for updates (channel={channel}, current={current_version})");
 
     let state = app_handle.state::<Mutex<update_schedule::UpdateSchedule>>();
     let mut updates = state.lock().await;
-    updates
-        .history
-        .record(&channel, update_schedule::unix_now());
-    updates.save();
-    let result = update::check_update(channel, current_version)
+    let result = updates
+        .check(channel, current_version)
         .await
-        .inspect_err(|e| log::error!("Update check failed: {e}"));
+        .inspect_err(|e| log::warn!("Update check deferred: {e}"));
     drop(updates);
     app_handle.state::<Arc<Notify>>().notify_one();
     result
