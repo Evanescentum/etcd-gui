@@ -7,6 +7,7 @@ mod query_manager;
 mod snapshot;
 mod state;
 mod update;
+mod update_schedule;
 
 use serde::Serialize;
 use state::AppState;
@@ -45,8 +46,26 @@ fn emit_update_check_event(app_handle: &tauri::AppHandle, payload: UpdateCheckEv
     }
 }
 
-async fn run_update_check_and_emit(app_handle: &tauri::AppHandle, channel: config::UpdateChannel) {
+async fn run_update_check_and_emit(
+    app_handle: &tauri::AppHandle,
+    channel: config::UpdateChannel,
+    schedule: config::UpdateCheckSchedule,
+) {
     let current_version = app_handle.package_info().version.clone();
+    let state = app_handle.state::<Mutex<update_schedule::UpdateSchedule>>();
+    let mut updates = state.lock().await;
+    // A manual check may have completed while the worker was waiting for this lock.
+    if updates
+        .history
+        .delay(&channel, &schedule, update_schedule::unix_now())
+        != Some(std::time::Duration::ZERO)
+    {
+        return;
+    }
+    updates
+        .history
+        .record(&channel, update_schedule::unix_now());
+    updates.save();
 
     log::info!(
         "Checking automatic update on GitHub (channel={channel}, current={current_version})"
@@ -76,8 +95,8 @@ async fn run_update_check_and_emit(app_handle: &tauri::AppHandle, channel: confi
 }
 
 async fn update_check_worker(app_handle: tauri::AppHandle, worker_control: Arc<Notify>) {
-    let startup_delay = std::time::Duration::from_secs(5);
-    let mut first_check_pending = true;
+    // Allow the frontend to register its event listener before an overdue check.
+    tokio::time::sleep(std::time::Duration::from_secs(5)).await;
 
     loop {
         let (channel, schedule) = {
@@ -89,31 +108,25 @@ async fn update_check_worker(app_handle: tauri::AppHandle, worker_control: Arc<N
             )
         };
 
-        if first_check_pending {
-            tokio::select! {
-                _ = tokio::time::sleep(startup_delay) => {
-                    if !matches!(schedule, config::UpdateCheckSchedule::Never) {
-                        run_update_check_and_emit(&app_handle, channel).await;
-                    }
-                    first_check_pending = false;
-                }
-                _ = worker_control.notified() => {
-                    first_check_pending = false;
-                }
-            }
-
-            continue;
-        }
-
-        match schedule.interval_duration() {
+        let delay = {
+            let state = app_handle.state::<Mutex<update_schedule::UpdateSchedule>>();
+            state
+                .lock()
+                .await
+                .history
+                .delay(&channel, &schedule, update_schedule::unix_now())
+        };
+        match delay {
             None => {
                 worker_control.notified().await;
             }
+            Some(interval) if interval.is_zero() => {
+                run_update_check_and_emit(&app_handle, channel, schedule).await;
+            }
             Some(interval) => {
                 tokio::select! {
-                    _ = tokio::time::sleep(interval) => {
-                        run_update_check_and_emit(&app_handle, channel).await;
-                    }
+                    // Re-read the configuration and deadline when the timer expires.
+                    _ = tokio::time::sleep(interval) => {}
                     _ = worker_control.notified() => {}
                 }
             }
@@ -130,9 +143,18 @@ async fn check_update(
 
     log::info!("Checking update on GitHub (channel={channel}, current={current_version})");
 
-    update::check_update(channel, current_version)
+    let state = app_handle.state::<Mutex<update_schedule::UpdateSchedule>>();
+    let mut updates = state.lock().await;
+    updates
+        .history
+        .record(&channel, update_schedule::unix_now());
+    updates.save();
+    let result = update::check_update(channel, current_version)
         .await
-        .inspect_err(|e| log::error!("Update check failed: {e}"))
+        .inspect_err(|e| log::error!("Update check failed: {e}"));
+    drop(updates);
+    app_handle.state::<Arc<Notify>>().notify_one();
+    result
 }
 
 /// Initialize the etcd client managed by the application state.
@@ -330,7 +352,7 @@ async fn update_config(
     }
 
     log::info!("Configuration updated successfully");
-    update_worker_control.notify_waiters();
+    update_worker_control.notify_one();
     Ok(())
 }
 
@@ -658,6 +680,9 @@ pub fn run() {
         ])
         .setup(|app| {
             app.manage(tokio::sync::Mutex::new(AppState::new(app.handle())?));
+            app.manage(Mutex::new(update_schedule::UpdateSchedule::load(
+                app.path().app_config_dir()?.join("update-check.json"),
+            )));
 
             let update_worker_control = Arc::new(Notify::new());
             let worker_control = update_worker_control.clone();
