@@ -25,8 +25,9 @@ Download the latest release from the [Releases](https://github.com/yourusername/
 
 Prerequisites:
 - [Rust](https://www.rust-lang.org/tools/install)
-- [Node.js](https://nodejs.org/) (v16 or higher)
-- [pnpm](https://pnpm.io/installation) (recommended) or npm
+- [Node.js](https://nodejs.org/) LTS (22.12 or higher), including npm
+- `protoc` and the platform's [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+- [NASM](https://www.nasm.us/) on Windows x86/x64, available on `PATH`, for the AWS-LC JWT backend
 
 ```bash
 # Clone the repository
@@ -34,13 +35,13 @@ git clone https://github.com/yourusername/etcd-gui.git
 cd etcd-gui
 
 # Install dependencies
-pnpm install
+npm ci
 
 # Run in development mode
-pnpm tauri dev
+npm run tauri dev
 
 # Build for production
-pnpm tauri build
+npm run tauri build
 ```
 
 ## Usage
