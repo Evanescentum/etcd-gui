@@ -116,7 +116,8 @@ impl<S: Splittable + Clone> BatchFetcher<S> {
     /// Fetches the next batch of entries from etcd.
     ///
     /// Returns `Ok(Some(items))` for each batch, or `Ok(None)` when all entries
-    /// have been yielded.
+    /// have been yielded. Returns an error if even a single entry exceeds the
+    /// response size limit; callers must not cache the range as fully scanned.
     pub async fn next_batch(
         &mut self,
         state: &mut AppState,
@@ -152,12 +153,11 @@ impl<S: Splittable + Clone> BatchFetcher<S> {
                         }
                         BatchOutcome::TooLarge => {
                             if task.limit <= 1 {
-                                log::error!(
-                                    "Batch size reduced to 1 but still out of range, skipping key '{}'",
+                                return Err(format!(
+                                    "etcd response exceeds the size limit even when requesting a single entry \
+                                     from range cursor {:?}. Query stopped because the results are incomplete.",
                                     String::from_utf8_lossy(&task.from_key)
-                                );
-                                self.phase = FetchPhase::Batching(tasks);
-                                continue;
+                                ));
                             }
                             tasks.push_back(BatchTask {
                                 from_key: task.from_key,
