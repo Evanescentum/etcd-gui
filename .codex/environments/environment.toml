@@ -1,0 +1,35 @@
+version = 1
+name = "etcd-gui"
+
+[setup]
+script = ""
+
+[[actions]]
+name = "Tauri dev"
+icon = "run"
+command = "cargo tauri dev"
+
+[[actions]]
+name = "Frontend build"
+icon = "tool"
+command = "npm run build"
+
+[[actions]]
+name = "Rust tests"
+icon = "test"
+command = "cargo test --manifest-path src-tauri/Cargo.toml"
+
+[[actions]]
+name = "Rust format check"
+icon = "tool"
+command = "cargo fmt --manifest-path src-tauri/Cargo.toml -- --check"
+
+[[actions]]
+name = "Rust Clippy"
+icon = "tool"
+command = "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets"
+
+[[actions]]
+name = "Tauri build"
+icon = "tool"
+command = "cargo tauri build"
